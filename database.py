@@ -208,6 +208,21 @@ CREATE TABLE IF NOT EXISTS translations_cache (
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (source, lang)
 );
+CREATE TABLE IF NOT EXISTS announce_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS achievements (
+    user_id INTEGER NOT NULL,
+    achievement TEXT NOT NULL,
+    granted_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, achievement)
+);
+CREATE TABLE IF NOT EXISTS seasons (
+    number INTEGER PRIMARY KEY,
+    starts_at INTEGER NOT NULL,
+    ended_at INTEGER
+);
 """
 
 PLAYER_COLUMNS = [

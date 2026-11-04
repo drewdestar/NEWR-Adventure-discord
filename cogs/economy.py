@@ -287,7 +287,7 @@ class Economy(commands.Cog):
             color=COLOR_ECONOMY))
 
     @app_commands.command(name="trade", description="Trade items with other players")
-    @app_commands.describe(aksi="offer/accept/decline/list", target="Opponent player (for offer)",
+    @app_commands.describe(aksi="offer/accept/decline/list", target="Opponent player: mention or user ID (for offer)",
                            tawar_item="Item you offer", tawar_jumlah="Offered item amount",
                            minta_item="Item you request", minta_jumlah="Requested item amount",
                            trade_id="Trade ID (for accept/decline)")
@@ -299,7 +299,7 @@ class Economy(commands.Cog):
     ])
     @app_commands.rename(aksi="action", tawar_item="offer_item", tawar_jumlah="offer_amount", minta_item="request_item", minta_jumlah="request_amount")
     async def trade(self, interaction: discord.Interaction, aksi: str,
-                    target: discord.Member = None, tawar_item: str = "",
+                    target: discord.User = None, tawar_item: str = "",
                     tawar_jumlah: int = 1, minta_item: str = "",
                     minta_jumlah: int = 1, trade_id: int = 0):
         conn = get_conn()

@@ -12,12 +12,54 @@ import display as disp
 import friends_db
 import info_db
 import logic
+import rolesync
 from data import AREAS, ITEMS, WEEKLY_BOSS
-from .common import (COLOR_BATTLE, bar_line, bump_daily, emb, err_embed,
-                     get_conn, guild_level_of, load_player,
+from .common import (COLOR_BATTLE, add_guild_exp, bar_line, bump_daily, emb,
+                     err_embed, get_conn, guild_level_of, load_player,
                      need_player, reward, sync_quests)
 
 FIGHTS = {}  # user_id -> state (in-memory; kalah/menang disimpan ke DB)
+
+
+def resolve_war(conn, war):
+    """Resolve a due guild war. Returns the winning guild id or None.
+
+    Moved verbatim out of the /guildwar handler so the announcement
+    loop can resolve overdue wars too. Formula and rewards are
+    unchanged: total member power (level*10 + atk) + guild level*50,
+    random 1.0-1.25 factor; winner +150 guild EXP, loser +30, every
+    winning member +100 gold.
+    """
+    if war["state"] != "pending" or int(time.time()) < war["resolves_at"]:
+        return None
+
+    def power(gid):
+        members = db.guild_member_ids(conn, gid)
+        total = 0
+        for mid in members:
+            mp = db.get_player(conn, mid)
+            if mp:
+                total += mp["level"] * 10 + mp["atk"]
+        g = db.get_guild(conn, gid)
+        return total + (g["level"] * 50 if g else 0)
+
+    pa = power(war["guild_a"]) * random.uniform(1.0, 1.25)
+    pb = power(war["guild_b"]) * random.uniform(1.0, 1.25)
+    winner = war["guild_a"] if pa >= pb else war["guild_b"]
+    loser = war["guild_b"] if winner == war["guild_a"] else war["guild_a"]
+    conn.execute(
+        "UPDATE wars SET state = 'done', score_a = ?, score_b = ?, winner_id = ? WHERE id = ?",
+        (int(pa), int(pb), winner, war["id"]))
+    conn.commit()
+    add_guild_exp(conn, winner, 150)
+    add_guild_exp(conn, loser, 30)
+    for mid in db.guild_member_ids(conn, winner):
+        mp = db.get_player(conn, mid)
+        if mp:
+            mp["gold"] += 100
+            mp["gold_earned"] += 100
+            db.save_player(conn, mp)
+    return winner
 
 
 class FightView(discord.ui.View):
@@ -89,7 +131,7 @@ class FightView(discord.ui.View):
                     + (f", loot {disp.item(loot)}" if loot else "")
                     + (', leveled up {n} levels!'.format(n=levels) if levels else "") + pet_note)
         else:
-            lost_gold = p["gold"] // 10
+            lost_gold = max(0, p["gold"] // 10)
             p["gold"] -= lost_gold
             p["hp"] = max(1, p["max_hp"] // 5)
             p["mp"] = max(0, self.player_mp)
@@ -395,16 +437,27 @@ class Battle(commands.Cog):
             if top:
                 db.add_item(conn, top["user_id"], random.choice(["jimat keberuntungan", "kristal void", "pedang baja"]))
             info_db.record_boss_kill(conn, boss=raid["boss"], raid_id=raid["id"], killer_id=p["user_id"], killer_power=friends_db.member_power(p), killer_damage=dmg)
+            rolesync.grant_achievement(conn, p["user_id"], "Boss Slayer")
             conn.commit()
             msg += '\n\n🎉 BOSS DEFEATED! All participants get gold based on contribution + 300 EXP. Top damage gets a rare item!'
         else:
             conn.commit()
         await interaction.response.send_message(
             embed=emb('🐉 Raid', msg, color=COLOR_BATTLE))
+        if new_hp <= 0 and interaction.guild is not None:
+            try:
+                member = interaction.guild.get_member(p["user_id"])
+                if member is None:
+                    member = await interaction.guild.fetch_member(p["user_id"])
+                if member is not None:
+                    await rolesync.sync_member_roles(
+                        interaction.guild, member, p, conn)
+            except Exception as exc:
+                print(f"WARNING: role sync after raid kill failed: {exc}")
 
     @app_commands.command(name="pvp", description="Challenge another player to a duel")
-    @app_commands.describe(target="Player to challenge")
-    async def pvp(self, interaction: discord.Interaction, target: discord.Member):
+    @app_commands.describe(target="Player to challenge: mention or user ID")
+    async def pvp(self, interaction: discord.Interaction, target: discord.User):
         conn = get_conn()
         p = await need_player(interaction, conn)
         if not p:
@@ -473,37 +526,6 @@ class Battle(commands.Cog):
             return
         my_guild = db.get_guild(conn, p["guild_id"])
 
-        def resolve(war):
-            """Selesaikan war yang sudah lewat waktunya. Kembalikan guild pemenang atau None."""
-            if war["state"] != "pending" or int(time.time()) < war["resolves_at"]:
-                return None
-            from .common import add_guild_exp
-            def power(gid):
-                members = db.guild_member_ids(conn, gid)
-                total = 0
-                for mid in members:
-                    mp = db.get_player(conn, mid)
-                    if mp:
-                        total += mp["level"] * 10 + mp["atk"]
-                g = db.get_guild(conn, gid)
-                return total + (g["level"] * 50 if g else 0)
-            pa = power(war["guild_a"]) * random.uniform(1.0, 1.25)
-            pb = power(war["guild_b"]) * random.uniform(1.0, 1.25)
-            winner = war["guild_a"] if pa >= pb else war["guild_b"]
-            loser = war["guild_b"] if winner == war["guild_a"] else war["guild_a"]
-            conn.execute(
-                "UPDATE wars SET state = 'done', score_a = ?, score_b = ?, winner_id = ? WHERE id = ?",
-                (int(pa), int(pb), winner, war["id"]))
-            conn.commit()
-            add_guild_exp(conn, winner, 150)
-            add_guild_exp(conn, loser, 30)
-            for mid in db.guild_member_ids(conn, winner):
-                mp = db.get_player(conn, mid)
-                if mp:
-                    mp["gold"] += 100
-                    mp["gold_earned"] += 100
-                    db.save_player(conn, mp)
-            return winner
 
         if aksi == "declare":
             if not guild:
@@ -557,12 +579,25 @@ class Battle(commands.Cog):
                               color=COLOR_BATTLE))
             return
         war = dict(war)
-        winner = resolve(war)
+        winner = resolve_war(conn, war)
         if winner:
             wname = db.get_guild(conn, winner)["name"]
             await interaction.response.send_message(embed=emb('🏆 Guild War Over!',
                 'Winner: **{w}**! The winning guild gets +150 guild EXP, all its members +100 gold.'.format(w=wname),
                 color=COLOR_BATTLE))
+            if interaction.guild is not None:
+                for mid in db.guild_member_ids(conn, winner):
+                    try:
+                        rolesync.grant_achievement(conn, mid, "War Champion")
+                        member = interaction.guild.get_member(mid)
+                        if member is None:
+                            member = await interaction.guild.fetch_member(mid)
+                        mp = db.get_player(conn, mid)
+                        if member is not None and mp is not None:
+                            await rolesync.sync_member_roles(
+                                interaction.guild, member, mp, conn)
+                    except Exception as exc:
+                        print(f"WARNING: role sync after war win failed: {exc}")
         else:
             a = db.get_guild(conn, war["guild_a"])["name"]
             b = db.get_guild(conn, war["guild_b"])["name"]

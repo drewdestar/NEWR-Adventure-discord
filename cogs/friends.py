@@ -55,7 +55,7 @@ class Friends(commands.Cog):
             pass
 
     async def _target_player(self, interaction, target):
-        """Validate a Member target: not self, not a bot, registered."""
+        """Validate a player target: not self, not a bot, registered."""
         if target.id == interaction.user.id:
             await interaction.response.send_message(
                 embed=err_embed("You cannot pick yourself."), ephemeral=True)
@@ -77,7 +77,7 @@ class Friends(commands.Cog):
     # -------------------------------------------------------------- /friend
     @app_commands.command(name="friend", description="Add, accept, decline, remove, or list friends")
     @app_commands.describe(aksi="add/accept/decline/remove/list",
-                           target="The player (not needed for list)")
+                           target="Player: mention or user ID (not needed for list)")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="add", value="add"),
         app_commands.Choice(name="accept", value="accept"),
@@ -86,7 +86,7 @@ class Friends(commands.Cog):
         app_commands.Choice(name="list", value="list"),
     ])
     async def friend(self, interaction: discord.Interaction, aksi: str,
-                     target: discord.Member = None):
+                     target: discord.User = None):
         conn = _conn()
         p = await need_player(interaction, conn)
         if not p:
@@ -221,10 +221,10 @@ class Friends(commands.Cog):
 
     # ------------------------------------------------------------ /transfer
     @app_commands.command(name="transfer", description="Send gold and/or items to a friend (instant gift)")
-    @app_commands.describe(target="Friend to send to", gold="Gold to send (0 = none)",
+    @app_commands.describe(target="Friend to send to: mention or user ID", gold="Gold to send (0 = none)",
                            item="Item name to send (empty = none)", qty="Item quantity")
     async def transfer(self, interaction: discord.Interaction,
-                       target: discord.Member, gold: int = 0,
+                       target: discord.User, gold: int = 0,
                        item: str = "", qty: int = 0):
         conn = _conn()
         p = await need_player(interaction, conn)
@@ -291,7 +291,7 @@ class Friends(commands.Cog):
     # ---------------------------------------------------------------- /loan
     @app_commands.command(name="loan", description="Gold loans between friends (lender sets the interest)")
     @app_commands.describe(aksi="offer/accept/repay/list",
-                           target="Friend (for offer)", principal="Gold to lend (for offer)",
+                           target="Friend: mention or user ID (for offer)", principal="Gold to lend (for offer)",
                            interest="Interest percent set by the lender, 0-100 (for offer)",
                            loan_id="Loan ID from /loan list (for accept/repay)")
     @app_commands.choices(aksi=[
@@ -301,7 +301,7 @@ class Friends(commands.Cog):
         app_commands.Choice(name="list", value="list"),
     ])
     async def loan(self, interaction: discord.Interaction, aksi: str,
-                   target: discord.Member = None, principal: int = 0,
+                   target: discord.User = None, principal: int = 0,
                    interest: int = 0, loan_id: int = 0):
         conn = _conn()
         p = await need_player(interaction, conn)
@@ -465,7 +465,7 @@ class Friends(commands.Cog):
     # --------------------------------------------------------------- /borrow
     @app_commands.command(name="borrow", description="Borrow an item from a friend (owner sets an optional fee)")
     @app_commands.describe(aksi="request/approve/return/list",
-                           target="Friend who owns the item (for request)",
+                           target="Friend who owns the item: mention or user ID (for request)",
                            item="Item name (for request)",
                            qty="Quantity (for request)",
                            borrow_id="Borrow ID from /borrow list (for approve/return)",
@@ -477,7 +477,7 @@ class Friends(commands.Cog):
         app_commands.Choice(name="list", value="list"),
     ])
     async def borrow(self, interaction: discord.Interaction, aksi: str,
-                     target: discord.Member = None, item: str = "",
+                     target: discord.User = None, item: str = "",
                      qty: int = 1, borrow_id: int = 0, fee: int = 0):
         conn = _conn()
         p = await need_player(interaction, conn)
@@ -647,14 +647,14 @@ class Friends(commands.Cog):
     # ------------------------------------------------------------ /bossinvite
     @app_commands.command(name="bossinvite", description="Invite a friend to join an active boss raid")
     @app_commands.describe(aksi="invite/accept/decline",
-                           target="Friend to invite (for invite) or who invited you (for accept/decline)")
+                           target="Friend: mention or user ID (for invite) or who invited you (for accept/decline)")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="invite", value="invite"),
         app_commands.Choice(name="accept", value="accept"),
         app_commands.Choice(name="decline", value="decline"),
     ])
     async def bossinvite(self, interaction: discord.Interaction, aksi: str,
-                         target: discord.Member = None):
+                         target: discord.User = None):
         conn = _conn()
         p = await need_player(interaction, conn)
         if not p:
@@ -758,14 +758,14 @@ class Friends(commands.Cog):
     # ----------------------------------------------------------- /guildinvite
     @app_commands.command(name="guildinvite", description="Invite a friend into your guild (leader only)")
     @app_commands.describe(aksi="invite/accept/decline",
-                           target="Friend to invite (for invite) or who invited you (for accept/decline)")
+                           target="Friend: mention or user ID (for invite) or who invited you (for accept/decline)")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="invite", value="invite"),
         app_commands.Choice(name="accept", value="accept"),
         app_commands.Choice(name="decline", value="decline"),
     ])
     async def guildinvite(self, interaction: discord.Interaction, aksi: str,
-                          target: discord.Member = None):
+                          target: discord.User = None):
         conn = _conn()
         p = await need_player(interaction, conn)
         if not p:

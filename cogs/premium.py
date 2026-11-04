@@ -38,8 +38,8 @@ class Premium(commands.Cog):
             embed=emb("👑 VIP Membership", txt, color=COLOR_PREMIUM))
 
     @app_commands.command(name="vipgrant", description="Give 30 days of VIP to a player (server admins only)")
-    @app_commands.describe(target="Player receiving VIP")
-    async def vipgrant(self, interaction: discord.Interaction, target: discord.Member):
+    @app_commands.describe(target="Player receiving VIP: mention or user ID")
+    async def vipgrant(self, interaction: discord.Interaction, target: discord.User):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message(
                 embed=err_embed('Only server admins can grant VIP.'),

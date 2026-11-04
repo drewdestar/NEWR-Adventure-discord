@@ -3,6 +3,7 @@
 import random
 import time
 from datetime import datetime, timedelta
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -12,6 +13,7 @@ import database as db
 import display as disp
 import i18n
 import logic
+import rolesync
 from data import AREAS, CLASSES, EVOLUTIONS, ITEMS, MONSTERS, QUESTS
 from .common import (COLOR_CORE, bar_line, bump_daily, emb, err_embed,
                      get_conn, guild_buff_text, guild_level_of,
@@ -216,17 +218,43 @@ class Core(commands.Cog):
                     i18n.t("Stats: HP {hp} • MP {mp} • ATK {atk} • DEF {df} • SPD {spd}").format(
                         hp=p["hp"], mp=p["mp"], atk=p["atk"], df=p["def"], spd=p["spd"]),
                     i18n.t("Starter pack: {pack}").format(pack=pack_txt),
+                    i18n.t("Your Discord ID (copy it for ID commands like /profile):\n```{id}```").format(id=interaction.user.id),
                     i18n.t("First steps: `/daily` for daily rewards, then `/fight` to hunt!"),
                 ]))
         await interaction.response.send_message(embed=e)
+        if interaction.guild is not None:
+            try:
+                member = interaction.guild.get_member(interaction.user.id)
+                if member is None:
+                    member = await interaction.guild.fetch_member(
+                        interaction.user.id)
+                if member is not None:
+                    await rolesync.sync_member_roles(
+                        interaction.guild, member, p, conn)
+            except Exception as exc:
+                print(f"WARNING: role sync after register failed: {exc}")
 
     # ------------------------------------------------------------- profile
-    @app_commands.command(name="profile", description="View your character stats")
-    async def profile(self, interaction: discord.Interaction):
+    @app_commands.command(name="profile", description="View a character profile")
+    @app_commands.describe(user="Player to look up: mention, user ID, or leave empty for your own profile")
+    async def profile(self, interaction: discord.Interaction,
+                      user: Optional[discord.User] = None):
         conn = get_conn()
-        p = await need_player(interaction, conn)
-        if not p:
-            return
+        if user is None:
+            p = await need_player(interaction, conn)
+            if not p:
+                return
+        else:
+            i18n.set_ctx(interaction, conn)
+            p = load_player(conn, user.id)
+            if p is None:
+                await interaction.response.send_message(
+                    embed=err_embed("That user doesn't have a character yet."),
+                    ephemeral=True)
+                return
+        await interaction.response.send_message(
+            embed=self._profile_embed(conn, p))
+    def _profile_embed(self, conn, p):
         eq = db.equipped_items(conn, p["user_id"])
         pets = db.get_pets(conn, p["user_id"])
         atk, defense, spd = logic.effective_stats(p, eq, pets[0] if pets else None)
@@ -265,7 +293,7 @@ class Core(commands.Cog):
                 color=COLOR_CORE)
         for w in warnings_for(p):
             e.add_field(name=i18n.t('Warning'), value=w, inline=False)
-        await interaction.response.send_message(embed=e)
+        return e
 
     # -------------------------------------------------------------- evolve
     @app_commands.command(name="evolve", description="Evolve your class to the next job")

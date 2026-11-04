@@ -9,6 +9,7 @@ from discord.ext import commands
 
 import database as db
 import logic
+import rolesync
 from .common import (COLOR_SOCIAL, add_guild_exp, bar_line, emb, err_embed,
                      get_conn, guild_buff_text, load_player, need_player)
 
@@ -24,6 +25,22 @@ def week_period():
 class Social(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def _sync_roles(self, interaction, conn, p):
+        """Best-effort role sync after a guild change (never breaks the
+        command itself)."""
+        if interaction.guild is None:
+            return
+        try:
+            member = interaction.guild.get_member(interaction.user.id)
+            if member is None:
+                member = await interaction.guild.fetch_member(
+                    interaction.user.id)
+            if member is not None:
+                await rolesync.sync_member_roles(
+                    interaction.guild, member, p, conn)
+        except Exception as exc:
+            print(f"WARNING: role sync after guild change failed: {exc}")
 
     @app_commands.command(name="guild", description="Create, join, leave, or view a guild")
     @app_commands.describe(aksi="create/join/leave/info", nama="Guild name")
@@ -73,6 +90,7 @@ class Social(commands.Cog):
                 f"**{nama}** resmi berdiri, dipimpin {p['name']}! "
                 f"Invite friends to join with `/guild join {nama}`.",
                 color=COLOR_SOCIAL))
+            await self._sync_roles(interaction, conn, p)
             return
         if aksi == "join":
             if p["guild_id"]:
@@ -94,6 +112,7 @@ class Social(commands.Cog):
                 embed=emb('🏰 Guild',
                           f"You joined guild **{g['name']}**! Active buff: {guild_buff_text(g['level'])}.",
                           color=COLOR_SOCIAL))
+            await self._sync_roles(interaction, conn, p)
             return
         if aksi == "leave":
             if not p["guild_id"]:
@@ -109,6 +128,7 @@ class Social(commands.Cog):
             conn.commit()
             await interaction.response.send_message(
                 embed=emb('🏰 Guild','You left the guild.', color=COLOR_SOCIAL))
+            await self._sync_roles(interaction, conn, p)
             return
         # info
         if not p["guild_id"]:

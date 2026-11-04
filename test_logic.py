@@ -149,6 +149,41 @@ def main():
               __import__("datetime").datetime(2026, 11, 5, 21, 30,
                                              tzinfo=logic.WIB)) is True)
 
+    # 7. Bot loans (botloan_db): cap, terms, one outstanding, full repay
+    import botloan_db
+    check("cap bot loan 100 x level, min 100",
+          botloan_db.loan_cap(1) == 100
+          and botloan_db.loan_cap(7) == 700)
+    check("bunga bot loan 10% flat",
+          botloan_db.loan_terms(500) == (50, 550)
+          and botloan_db.loan_terms(105) == (10, 115))
+    botloan_db.ensure_tables(conn)
+    check("belum ada bot loan aktif",
+          botloan_db.get_active_loan(conn, uid) is None)
+    lid = botloan_db.create_loan(conn, uid, 500, 50, 550)
+    active = botloan_db.get_active_loan(conn, uid)
+    check("bot loan aktif tercatat",
+          active is not None and active["id"] == lid
+          and active["total_due"] == 550)
+    botloan_db.repay_loan(conn, lid)
+    check("bot loan lunas, bisa pinjam lagi",
+          botloan_db.get_active_loan(conn, uid) is None)
+    check("gate pinjam bot: saldo negatif = utang tertunggak",
+          botloan_db.can_borrow(100, None) is True
+          and botloan_db.can_borrow(-50, None) is False
+          and botloan_db.can_borrow(100, {"id": lid}) is False)
+    pp = db.get_player(conn, uid)
+    pp["gold"] = -50
+    db.save_player(conn, pp)
+    check("saldo negatif tidak di-clamp ke nol",
+          db.get_player(conn, uid)["gold"] == -50)
+    pp = db.get_player(conn, uid)
+    pp["gold"] += 200
+    db.save_player(conn, pp)
+    check("debitur bisa menabung kembali ke positif (kerja tetap buka)",
+          db.get_player(conn, uid)["gold"] == 150
+          and botloan_db.can_borrow(150, None) is True)
+
     conn.close()
     os.unlink(tmp.name)
     print()

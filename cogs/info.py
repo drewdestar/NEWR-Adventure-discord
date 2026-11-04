@@ -261,12 +261,12 @@ class Info(commands.Cog):
     @app_commands.describe(
         topic="What do you want to look up?",
         name="Name (monster, area, item, class, pet, boss, or guild)",
-        user="Player (only for the power topic)")
+        user="Player: mention or user ID (only for the power topic)")
     @app_commands.choices(topic=TOPIC_CHOICES)
     @app_commands.autocomplete(name=name_autocomplete)
     async def info(self, interaction: discord.Interaction, topic: str,
                    name: str = "",
-                   user: Optional[discord.Member] = None):
+                   user: Optional[discord.User] = None):
         conn = get_conn()
         info_db.ensure_tables(conn)
         handler = {

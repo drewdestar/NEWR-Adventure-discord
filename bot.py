@@ -47,6 +47,8 @@ COGS = [
     "cogs.guildpower",
     "cogs.leaderboard",
     "cogs.info",
+    "cogs.announce",
+    "cogs.botloan",
 ]
 
 
