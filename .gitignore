@@ -1,0 +1,24 @@
+# Secrets — jangan pernah di-commit
+.env
+
+# Database pemain live — JANGAN di-commit (berisi data pemain).
+# Yang di-commit hanya schema.sql + seed.py untuk rebuild struktur.
+rpg.db
+rpg.db-journal
+rpg.db-wal
+rpg.db-shm
+backups/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Log lokal
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+.vscode/
