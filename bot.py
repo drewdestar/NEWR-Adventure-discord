@@ -49,6 +49,8 @@ COGS = [
     "cogs.info",
     "cogs.announce",
     "cogs.botloan",
+    "cogs.guildbank",
+    "cogs.hospital",
 ]
 
 

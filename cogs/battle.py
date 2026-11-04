@@ -10,6 +10,8 @@ from discord.ext import commands
 import database as db
 import display as disp
 import friends_db
+import guildbank_db
+import hospital_db
 import info_db
 import logic
 import rolesync
@@ -28,7 +30,8 @@ def resolve_war(conn, war):
     loop can resolve overdue wars too. Formula and rewards are
     unchanged: total member power (level*10 + atk) + guild level*50,
     random 1.0-1.25 factor; winner +150 guild EXP, loser +30, every
-    winning member +100 gold.
+    winning member +100 gold. Phase 2 addition: the winning guild's
+    BANK also receives +1000 gold (war prize for the guild itself).
     """
     if war["state"] != "pending" or int(time.time()) < war["resolves_at"]:
         return None
@@ -59,7 +62,29 @@ def resolve_war(conn, war):
             mp["gold"] += 100
             mp["gold_earned"] += 100
             db.save_player(conn, mp)
+    # Phase 2: the winning guild's BANK gets the war prize too.
+    guildbank_db.ensure_tables(conn)
+    guildbank_db.add_bank_gold(conn, winner, guildbank_db.WAR_BANK_PRIZE)
     return winner
+
+
+async def _hospital_gate(interaction, conn, p):
+    """True (with an error sent) if the player is hospitalized: no new
+    fights, raid starts/joins, or duels until discharge. Jobs, shop,
+    transfers, and item use stay open."""
+    hospital_db.ensure_tables(conn)
+    adm = hospital_db.get_admission(conn, p["user_id"])
+    if adm is None:
+        return False
+    hp = hospital_db.computed_hp(adm, p["max_hp"])
+    mins = hospital_db.minutes_to_discharge(adm, p["max_hp"])
+    await interaction.response.send_message(
+        embed=err_embed(
+            f"🏥 You're in the hospital! HP {hp}/{p['max_hp']}. You can't fight, raid, or duel "
+            f"until you leave (at 25% of max HP, about {mins} more minute(s)). "
+            f"Check `/hospital status`, or use a potion to heal instantly."),
+        ephemeral=True)
+    return True
 
 
 class FightView(discord.ui.View):
@@ -133,11 +158,20 @@ class FightView(discord.ui.View):
         else:
             lost_gold = max(0, p["gold"] // 10)
             p["gold"] -= lost_gold
-            p["hp"] = max(1, p["max_hp"] // 5)
             p["mp"] = max(0, self.player_mp)
             p["stamina"] = max(0, p["stamina"] - 5)
+            # No instant HP restore anymore: defeat admits the player to
+            # the hospital (HP 0, healing 10 HP/min, leave at 25% of max
+            # HP or sooner with a potion). Banked gold is never touched
+            # by defeat loss — only carried gold is.
+            p["hp"] = 0
             db.save_player(conn, p)
-            text = '💀 DEFEAT... {m} is too strong. You lost {lost} gold, HP restored to {hp}.'.format(m=disp.monster(self.monster['name']), lost=lost_gold, hp=p['hp'])
+            hospital_db.ensure_tables(conn)
+            adm = hospital_db.admit(conn, p["user_id"], 0, reason="defeat")
+            mins = hospital_db.minutes_to_discharge(adm, p["max_hp"])
+            text = ('💀 DEFEAT... {m} is too strong. You lost {lost} gold and were admitted to the hospital. '
+                    'You heal 10 HP per minute; you may leave in about {mins} minute(s) (at 25% of max HP) — '
+                    'or use a potion to heal instantly. Banked gold is safe.').format(m=disp.monster(self.monster['name']), lost=lost_gold, mins=mins)
         FIGHTS.pop(self.owner_id, None)
         for child in self.children:
             child.disabled = True
@@ -248,6 +282,14 @@ class DuelView(discord.ui.View):
         conn = get_conn()
         a = load_player(conn, self.challenger_id)
         b = load_player(conn, self.target_id)
+        # Hospitalized players cannot duel (either side).
+        for side in (a, b):
+            hospital_db.ensure_tables(conn)
+            if hospital_db.get_admission(conn, side["user_id"]) is not None:
+                await interaction.response.send_message(
+                    embed=err_embed(f"**{side['name']}** is in the hospital — duels wait until discharge."),
+                    ephemeral=True)
+                return
         pa = a["level"] * 10 + a["atk"] + a["spd"] + random.randint(0, 50)
         pb = b["level"] * 10 + b["atk"] + b["spd"] + random.randint(0, 50)
         if pa >= pb:
@@ -267,11 +309,18 @@ class DuelView(discord.ui.View):
         sync_quests(conn, winner)
         for child in self.children:
             child.disabled = True
+        result_desc = ('**{w}** beat **{l}**!\n+25 ranking points for the winner, -10 for the loser.'.format(w=winner['name'], l=loser['name']))
+        view = VictoryChoiceView(winner["user_id"], loser["user_id"],
+                                 winner["name"], loser["name"], result_desc)
         await interaction.response.edit_message(
             embed=emb('⚔️ Duel Result',
-                      '**{w}** beat **{l}**!\n+25 ranking points for the winner, -10 for the loser.'.format(w=winner['name'],l=loser['name']),
+                      result_desc + f"\n\n**{winner['name']}**, choose what happens next (60 seconds, then Pergi by default):",
                       color=COLOR_BATTLE),
-            view=self)
+            view=view)
+        try:
+            view.message = await interaction.original_response()
+        except Exception:
+            pass
 
     @discord.ui.button(label="❌ Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction, button):
@@ -285,6 +334,129 @@ class DuelView(discord.ui.View):
             embed=emb('Duel declined', '{name} declined the duel.'.format(name=self.target_name),
                       color=COLOR_BATTLE),
             view=self)
+
+
+class VictoryChoiceView(discord.ui.View):
+    """Post-duel choice for the winner (60 seconds, default Pergi).
+
+    - Curi: steal 10% of the loser's CARRIED gold (logic.pvp_steal_amount).
+      Banked gold is never touched; 0 or negative carried gold yields 0.
+      Stolen gold does not count toward the winner's gold_earned quest
+      counter (a steal is not earnings).
+    - Pergi: leave, nothing happens.
+    - Rumah Sakit: admit the loser to the hospital (heals 10 HP/min,
+      may leave at 25% of max HP) — a mercy option, no gold moves.
+      If the loser is already admitted, the original admission stands
+      (no timer reset).
+    """
+
+    def __init__(self, winner_id, loser_id, winner_name, loser_name, result_desc):
+        super().__init__(timeout=60)
+        self.winner_id = winner_id
+        self.loser_id = loser_id
+        self.winner_name = winner_name
+        self.loser_name = loser_name
+        self.result_desc = result_desc
+        self.message = None
+        self.resolved = False
+
+    async def on_timeout(self):
+        if self.resolved or self.message is None:
+            return
+        for child in self.children:
+            child.disabled = True
+        try:
+            await self.message.edit(
+                embed=emb('⚔️ Duel Result',
+                          self.result_desc + f"\n\n**{self.winner_name}** did not choose within 60 seconds — Pergi by default, nothing further happened.",
+                          color=COLOR_BATTLE),
+                view=self)
+        except Exception:
+            pass
+
+    async def _check(self, interaction):
+        if interaction.user.id != self.winner_id:
+            await interaction.response.send_message(
+                embed=err_embed('Only the duel winner can choose.'), ephemeral=True)
+            return False
+        return True
+
+    async def _finish(self, interaction, choice):
+        if not await self._check(interaction):
+            return
+        self.resolved = True
+        for child in self.children:
+            child.disabled = True
+        conn = get_conn()
+        if choice == "pergi":
+            await interaction.response.edit_message(
+                embed=emb('⚔️ Duel Result',
+                          self.result_desc + f"\n\n**{self.winner_name}** left. Nothing further happened.",
+                          color=COLOR_BATTLE),
+                view=self)
+            return
+        if choice == "curi":
+            loser = db.get_player(conn, self.loser_id)
+            winner = db.get_player(conn, self.winner_id)
+            if loser is None or winner is None:
+                await interaction.response.edit_message(
+                    embed=err_embed("The duel players could not be reloaded."),
+                    view=self)
+                return
+            steal = logic.pvp_steal_amount(loser["gold"])
+            carried = loser["gold"]
+            loser["gold"] -= steal
+            winner["gold"] += steal
+            db.save_player(conn, loser)
+            db.save_player(conn, winner)
+            if steal > 0:
+                note = (f"**{self.winner_name}** stole **{steal} gold** from **{self.loser_name}** "
+                        f"(10% of {carried} carried gold). Banked gold was never touched.")
+            else:
+                note = (f"**{self.winner_name}** tried to steal, but **{self.loser_name}** carries "
+                        f"{carried} gold — 10% of that is 0, nothing was taken.")
+            await interaction.response.edit_message(
+                embed=emb('⚔️ Duel Result', self.result_desc + f"\n\n{note}",
+                          color=COLOR_BATTLE),
+                view=self)
+            return
+        # rumah sakit
+        loser = load_player(conn, self.loser_id)
+        if loser is None:
+            await interaction.response.edit_message(
+                embed=err_embed("The loser could not be reloaded."),
+                view=self)
+            return
+        hospital_db.ensure_tables(conn)
+        existing = hospital_db.get_admission(conn, self.loser_id)
+        if existing is not None:
+            hp = hospital_db.computed_hp(existing, loser["max_hp"])
+            note = (f"**{self.winner_name}** showed mercy, but **{self.loser_name}** is already in the "
+                    f"hospital (HP {hp}/{loser['max_hp']}) — the original admission stands, no timer reset.")
+        else:
+            adm = hospital_db.admit(conn, self.loser_id, loser["hp"],
+                                    reason="pvp", admitted_by=self.winner_id)
+            mins = hospital_db.minutes_to_discharge(adm, loser["max_hp"])
+            note = (f"**{self.winner_name}** showed mercy: **{self.loser_name}** was admitted to the "
+                    f"hospital (HP {loser['hp']}/{loser['max_hp']}). They heal 10 HP per minute and may "
+                    f"leave in about {mins} minute(s) (at 25% of max HP), or sooner with a potion. "
+                    f"No gold moved.")
+        await interaction.response.edit_message(
+            embed=emb('⚔️ Duel Result', self.result_desc + f"\n\n{note}",
+                      color=COLOR_BATTLE),
+            view=self)
+
+    @discord.ui.button(label="Curi", style=discord.ButtonStyle.danger, emoji="💰")
+    async def curi(self, interaction, button):
+        await self._finish(interaction, "curi")
+
+    @discord.ui.button(label="Pergi", style=discord.ButtonStyle.secondary, emoji="🚶")
+    async def pergi(self, interaction, button):
+        await self._finish(interaction, "pergi")
+
+    @discord.ui.button(label="Rumah Sakit", style=discord.ButtonStyle.success, emoji="🏥")
+    async def rumah_sakit(self, interaction, button):
+        await self._finish(interaction, "rumah sakit")
 
 
 class Battle(commands.Cog):
@@ -301,6 +473,8 @@ class Battle(commands.Cog):
         if p["user_id"] in FIGHTS:
             await interaction.response.send_message(
                 embed=err_embed("You're already fighting! Finish it first."), ephemeral=True)
+            return
+        if await _hospital_gate(interaction, conn, p):
             return
         if p["hp"] <= 0:
             await interaction.response.send_message(
@@ -346,6 +520,8 @@ class Battle(commands.Cog):
             return
         raid = db.active_raid(conn)
         if aksi == "start":
+            if await _hospital_gate(interaction, conn, p):
+                return
             if raid:
                 await interaction.response.send_message(
                     embed=err_embed("There's already an active raid: **{boss}** ({hp}/{maxhp} HP). Just join!".format(boss=disp.monster(raid['boss']), hp=raid['hp'], maxhp=raid['max_hp'])),
@@ -380,6 +556,8 @@ class Battle(commands.Cog):
                 "Damage:\n" + "\n".join(lines), color=COLOR_BATTLE))
             return
         if aksi == "join":
+            if await _hospital_gate(interaction, conn, p):
+                return
             conn.execute(
                 "INSERT OR IGNORE INTO raid_members (raid_id, user_id) VALUES (?, ?)",
                 (raid["id"], p["user_id"]))
@@ -461,6 +639,8 @@ class Battle(commands.Cog):
         conn = get_conn()
         p = await need_player(interaction, conn)
         if not p:
+            return
+        if await _hospital_gate(interaction, conn, p):
             return
         if target.id == interaction.user.id:
             await interaction.response.send_message(
@@ -583,7 +763,7 @@ class Battle(commands.Cog):
         if winner:
             wname = db.get_guild(conn, winner)["name"]
             await interaction.response.send_message(embed=emb('🏆 Guild War Over!',
-                'Winner: **{w}**! The winning guild gets +150 guild EXP, all its members +100 gold.'.format(w=wname),
+                'Winner: **{w}**! The winning guild gets +150 guild EXP, its bank gets +1000 gold, and all its members +100 gold.'.format(w=wname),
                 color=COLOR_BATTLE))
             if interaction.guild is not None:
                 for mid in db.guild_member_ids(conn, winner):

@@ -184,6 +184,87 @@ def main():
           db.get_player(conn, uid)["gold"] == 150
           and botloan_db.can_borrow(150, None) is True)
 
+    # 8. Phase 2: guild economy, personal bank, hospital, PvP steal
+    import guildbank_db as gb
+    import hospital_db as hb
+    gb.ensure_tables(conn)
+    hb.ensure_tables(conn)
+    check("bank guild mulai 0", gb.bank_gold(conn, 1) == 0)
+    gb.add_bank_gold(conn, 1, 1000)
+    check("hadiah perang +1000 ke bank guild", gb.bank_gold(conn, 1) == 1000)
+    gb.add_bank_gold(conn, 1, -250)
+    check("bank guild bisa dikurangi", gb.bank_gold(conn, 1) == 750)
+    check("bunga guild loan 10% flat",
+          gb.guild_loan_terms(500) == (50, 550)
+          and gb.guild_loan_terms(105) == (10, 115))
+    check("pajak market 10%",
+          gb.market_split(1000) == (100, 900)
+          and gb.market_split(105) == (10, 95)
+          and gb.market_split(9) == (0, 9))
+    check("bunga bank 1%/hari",
+          gb.bank_interest(1000, 3) == 30
+          and gb.bank_interest(999, 1) == 9)
+    conn.execute(
+        "INSERT INTO personal_bank (user_id, balance, last_accrual) "
+        "VALUES (?, 1000, ?)", (uid, 1000000))
+    conn.commit()
+    bal, intr = gb.accrue_bank(conn, uid, ts=1000000 + 3 * 86400)
+    check("akrual bank 3 hari", (bal, intr) == (1030, 30))
+    bal2, intr2 = gb.accrue_bank(conn, uid, ts=1000000 + 3 * 86400 + 3600)
+    check("akrual parsial hari tidak dihitung", (bal2, intr2) == (1030, 0))
+    check("pool pajak mulai 0", gb.tax_pool_balance(conn) == 0)
+    gb.add_tax(conn, 100)
+    check("pajak masuk pool", gb.tax_pool_balance(conn) == 100)
+    check("tarik pool melebihi saldo ditolak",
+          gb.take_tax_pool(conn, 101) is False
+          and gb.tax_pool_balance(conn) == 100)
+    check("tarik pool berhasil",
+          gb.take_tax_pool(conn, 40) is True
+          and gb.tax_pool_balance(conn) == 60)
+    check("split hadiah pajak",
+          gb.split_prize(100, 3) == (33, 1)
+          and gb.split_prize(100, 4) == (25, 0))
+    lid2 = gb.create_guild_loan(conn, 1, uid, 500, None, 0)
+    check("guild loan pending tercatat",
+          gb.get_active_guild_loan(conn, uid) is not None)
+    gb.approve_guild_loan(conn, lid2)
+    check("guild loan aktif setelah approve",
+          gb.get_guild_loan(conn, lid2)["status"] == "active")
+    gb.repay_guild_loan(conn, lid2)
+    check("guild loan lunas", gb.get_active_guild_loan(conn, uid) is None)
+    gb.record_deposit(conn, 1, uid, "gold", gold=300)
+    gb.record_deposit(conn, 1, uid + 1, "gold", gold=500)
+    check("top depositor", gb.top_depositors(conn, 1) == [(uid + 1, 500)])
+    gb.record_tax(conn, uid, 1, 2, "potion kecil", 1, 1000, 100)
+    gb.record_tax(conn, uid + 1, 1, 2, "potion kecil", 2, 500, 50)
+    check("top taxpayer", gb.top_tax_players(conn, 1) == [(uid, 100)])
+    check("top taxpayer guild", gb.top_tax_guilds(conn, 1) == [(1, 150)])
+    adm = hb.admit(conn, uid, 0, reason="defeat")
+    check("rawat inap dicatat",
+          adm is not None and adm["hp_at_admission"] == 0)
+    check("HP rumah sakit dihitung malas",
+          hb.computed_hp(adm, 120, ts=adm["admitted_at"]) == 0
+          and hb.computed_hp(adm, 120, ts=adm["admitted_at"] + 180) == 30)
+    check("bisa pulang di 25%",
+          hb.can_leave(30, 120) is True and hb.can_leave(29, 120) is False)
+    check("menit ke pulang",
+          hb.minutes_to_discharge(adm, 120, ts=adm["admitted_at"]) == 3)
+    ptest = db.get_player(conn, uid)
+    ptest["max_hp"] = 120
+    status, hp = hb.sync_patient(conn, ptest, ts=adm["admitted_at"] + 12 * 60)
+    check("sembuh penuh auto-pulang",
+          status == "discharged" and hp == 120
+          and hb.get_admission(conn, uid) is None)
+    check("curi 10% carried gold",
+          logic.pvp_steal_amount(1000) == 100
+          and logic.pvp_steal_amount(999) == 99)
+    check("curi 0/negatif = 0",
+          logic.pvp_steal_amount(0) == 0
+          and logic.pvp_steal_amount(-50) == 0
+          and logic.pvp_steal_amount(5) == 0)
+    check("kalah potong 10% carried (clamp), bank aman",
+          max(0, 150 // 10) == 15 and max(0, -50 // 10) == 0)
+
     conn.close()
     os.unlink(tmp.name)
     print()

@@ -20,12 +20,14 @@ from discord.ext import commands
 
 import botloan_db
 import database as db
+import guildbank_db
 from .common import COLOR_ECONOMY, emb, err_embed, get_conn, need_player
 
 
 def _conn():
     conn = get_conn()
     botloan_db.ensure_tables(conn)
+    guildbank_db.ensure_tables(conn)
     return conn
 
 
@@ -71,6 +73,13 @@ class _ConfirmView(discord.ui.View):
                 embed=err_embed(
                     "You already have an outstanding bot loan. Repay it "
                     "first with `/botloan repay`."),
+                view=self)
+            return
+        if guildbank_db.get_active_guild_loan(conn, self.user_id) is not None:
+            await interaction.response.edit_message(
+                embed=err_embed(
+                    "You have an open guild loan. Repay it first with "
+                    "`/guildloan repay` before borrowing from the bot."),
                 view=self)
             return
         if p["gold"] < 0:
@@ -139,6 +148,13 @@ class BotLoan(commands.Cog):
                 embed=err_embed(
                     "You already have an outstanding bot loan. Repay it "
                     "first with `/botloan repay` before borrowing again."),
+                ephemeral=True)
+            return
+        if guildbank_db.get_active_guild_loan(conn, me) is not None:
+            await interaction.response.send_message(
+                embed=err_embed(
+                    "You have an open guild loan. Repay it first with "
+                    "`/guildloan repay` before borrowing from the bot."),
                 ephemeral=True)
             return
         if p["gold"] < 0:

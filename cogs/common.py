@@ -6,6 +6,7 @@ from pathlib import Path
 import discord
 
 import database as db
+import hospital_db
 import i18n
 import logic
 from data import CREDIT, QUESTS
@@ -57,6 +58,14 @@ def load_player(conn, user_id):
         changed = True
     h, t, hp = logic.apply_passive_decay(p)
     if h or t or hp:
+        changed = True
+    # Hospital healing governs HP while admitted: sync AFTER decay, so
+    # starvation HP drain never fights hospital healing (hunger/thirst
+    # themselves still decay). Reaching full HP auto-discharges.
+    hospital_db.ensure_tables(conn)
+    old_hp = p["hp"]
+    status, _hp = hospital_db.sync_patient(conn, p)
+    if status is not None and (p["hp"] != old_hp or status == "discharged"):
         changed = True
     if changed:
         db.save_player(conn, p)

@@ -11,6 +11,7 @@ from discord.ext import commands
 
 import database as db
 import display as disp
+import hospital_db
 import i18n
 import logic
 import rolesync
@@ -40,7 +41,17 @@ def apply_use_item(conn, p, item):
             p["mp"] = min(p["max_mp"], p["mp"] + info["mp"])
         db.remove_item(conn, p["user_id"], item, 1)
         db.save_player(conn, p)
-        return True, '🧪 You used {item}! HP now {hp}/{maxhp}, MP {mp}/{maxmp}.'.format(item=name, hp=p['hp'], maxhp=p['max_hp'], mp=p['mp'], maxmp=p['max_mp'])
+        text = '🧪 You used {item}! HP now {hp}/{maxhp}, MP {mp}/{maxmp}.'.format(item=name, hp=p['hp'], maxhp=p['max_hp'], mp=p['mp'], maxmp=p['max_mp'])
+        # Healing items bypass the hospital wait: reaching 25% of max HP
+        # via a potion discharges the patient immediately (even if time
+        # healing had already passed 25% — using medicine to get out is
+        # the point of the shortcut).
+        hospital_db.ensure_tables(conn)
+        if (hospital_db.get_admission(conn, p["user_id"]) is not None
+                and hospital_db.can_leave(p["hp"], p["max_hp"])):
+            hospital_db.discharge(conn, p["user_id"])
+            text += ' 🏥 You reached 25% HP — you are discharged from the hospital!'
+        return True, text
     if info["type"] == "food":
         p["hunger"] = min(100, p["hunger"] + info.get("hunger", 0))
         p["thirst"] = min(100, p["thirst"] + info.get("thirst", 0))

@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Cog friends: friend list, transfers, loans, borrows, boss & guild invites.
+"""Cog friends: friend list, transfers, borrows, boss & guild invites.
 
 All friendships and agreements are two-party: nothing moves until the
 other side explicitly accepts. Notifications go to the other user via DM
 (best-effort: if DMs are closed, the requester gets an ephemeral warning).
 
 No interest is ever charged automatically and nothing is ever seized:
-loans only track the agreement both parties approved, and borrowed items
-are returned with /borrow return.
+borrowed items are returned with /borrow return. Friend-to-friend gold
+loans (/loan) were removed in phase 2 — loans now come from the guild
+bank (/guildloan) or the bot (/botloan); historical /loan rows stay in
+the database untouched.
 """
 import discord
 from discord import app_commands
@@ -287,180 +289,6 @@ class Friends(commands.Cog):
             color=COLOR_ECONOMY))
         if not sent:
             await self._warn_dm_failed(interaction)
-
-    # ---------------------------------------------------------------- /loan
-    @app_commands.command(name="loan", description="Gold loans between friends (lender sets the interest)")
-    @app_commands.describe(aksi="offer/accept/repay/list",
-                           target="Friend: mention or user ID (for offer)", principal="Gold to lend (for offer)",
-                           interest="Interest percent set by the lender, 0-100 (for offer)",
-                           loan_id="Loan ID from /loan list (for accept/repay)")
-    @app_commands.choices(aksi=[
-        app_commands.Choice(name="offer", value="offer"),
-        app_commands.Choice(name="accept", value="accept"),
-        app_commands.Choice(name="repay", value="repay"),
-        app_commands.Choice(name="list", value="list"),
-    ])
-    async def loan(self, interaction: discord.Interaction, aksi: str,
-                   target: discord.User = None, principal: int = 0,
-                   interest: int = 0, loan_id: int = 0):
-        conn = _conn()
-        p = await need_player(interaction, conn)
-        if not p:
-            return
-        me = p["user_id"]
-
-        if aksi == "list":
-            rows = conn.execute(
-                "SELECT * FROM loans WHERE (lender_id = ? OR borrower_id = ?) "
-                "AND status IN ('offered', 'accepted') ORDER BY id",
-                (me, me)).fetchall()
-            if not rows:
-                await interaction.response.send_message(embed=emb(
-                    "💰 Loans",
-                    "No open loans. Offer one with `/loan offer @friend <gold> <interest%>`.",
-                    color=COLOR_ECONOMY))
-                return
-            lines = []
-            for r in rows:
-                total = r["principal"] + r["principal"] * r["interest_pct"] // 100
-                if r["lender_id"] == me:
-                    lines.append(f"ID {r['id']}: you lend **{r['principal']} gold** "
-                                 f"to **{_name(conn, r['borrower_id'])}** "
-                                 f"({r['interest_pct']}% interest, repay {total} gold) — {r['status']}")
-                else:
-                    lines.append(f"ID {r['id']}: you borrow **{r['principal']} gold** "
-                                 f"from **{_name(conn, r['lender_id'])}** "
-                                 f"({r['interest_pct']}% interest, repay {total} gold) — {r['status']}")
-            await interaction.response.send_message(embed=emb(
-                "💰 Loans", "\n".join(lines), color=COLOR_ECONOMY))
-            return
-
-        if aksi == "offer":
-            if target is None:
-                await interaction.response.send_message(
-                    embed=err_embed("Pick the friend you want to lend to."),
-                    ephemeral=True)
-                return
-            t = await self._target_player(interaction, target)
-            if not t:
-                return
-            if not friends_db.is_friend(conn, me, target.id):
-                await interaction.response.send_message(
-                    embed=err_embed("You can only lend to a friend."),
-                    ephemeral=True)
-                return
-            if principal <= 0:
-                await interaction.response.send_message(
-                    embed=err_embed("Principal must be more than 0 gold."),
-                    ephemeral=True)
-                return
-            if not 0 <= interest <= 100:
-                await interaction.response.send_message(
-                    embed=err_embed("Interest must be between 0% and 100%."),
-                    ephemeral=True)
-                return
-            if p["gold"] < principal:
-                await interaction.response.send_message(
-                    embed=err_embed(f"Not enough gold! You have {p['gold']} gold."),
-                    ephemeral=True)
-                return
-            total = principal + principal * interest // 100
-            cur = conn.execute(
-                "INSERT INTO loans (lender_id, borrower_id, principal, interest_pct, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (me, target.id, principal, interest, friends_db.now()))
-            lid = cur.lastrowid
-            conn.commit()
-            sent = await self._dm(target.id, emb(
-                "💰 Loan Offer!",
-                f"**{p['name']}** offers you a loan of **{principal} gold** "
-                f"at **{interest}%** interest (you repay **{total} gold**).\n"
-                f"Accept with `/loan accept {lid}` — nothing moves until you accept.",
-                color=COLOR_ECONOMY))
-            await interaction.response.send_message(embed=emb(
-                "💰 Loan Offer Sent",
-                f"Offered **{principal} gold** at **{interest}%** to **{t['name']}** "
-                f"(ID {lid}, repay {total} gold). Nothing moves until they accept.",
-                color=COLOR_ECONOMY))
-            if not sent:
-                await self._warn_dm_failed(interaction)
-            return
-
-        if aksi == "accept":
-            row = conn.execute(
-                "SELECT * FROM loans WHERE id = ?", (loan_id,)).fetchone()
-            if not row or row["status"] != "offered" or row["borrower_id"] != me:
-                await interaction.response.send_message(
-                    embed=err_embed("No open loan offer with that ID for you."),
-                    ephemeral=True)
-                return
-            lender = db.get_player(conn, row["lender_id"])
-            if not lender or lender["gold"] < row["principal"]:
-                await interaction.response.send_message(
-                    embed=err_embed("The lender no longer has enough gold for this loan."),
-                    ephemeral=True)
-                return
-            lender["gold"] -= row["principal"]
-            db.save_player(conn, lender)
-            p = db.get_player(conn, me)
-            p["gold"] += row["principal"]
-            db.save_player(conn, p)
-            conn.execute("UPDATE loans SET status = 'accepted' WHERE id = ?",
-                         (loan_id,))
-            conn.commit()
-            total = row["principal"] + row["principal"] * row["interest_pct"] // 100
-            sent = await self._dm(row["lender_id"], emb(
-                "💰 Loan Accepted!",
-                f"**{p['name']}** accepted your loan of **{row['principal']} gold** "
-                f"({row['interest_pct']}% interest, repay {total} gold).",
-                color=COLOR_ECONOMY))
-            await interaction.response.send_message(embed=emb(
-                "💰 Loan Accepted!",
-                f"You received **{row['principal']} gold** from "
-                f"**{_name(conn, row['lender_id'])}**. Repay **{total} gold** "
-                f"with `/loan repay {loan_id}`.",
-                color=COLOR_ECONOMY))
-            if not sent:
-                await self._warn_dm_failed(interaction)
-            return
-
-        if aksi == "repay":
-            row = conn.execute(
-                "SELECT * FROM loans WHERE id = ?", (loan_id,)).fetchone()
-            if not row or row["status"] != "accepted" or row["borrower_id"] != me:
-                await interaction.response.send_message(
-                    embed=err_embed("No outstanding loan with that ID for you."),
-                    ephemeral=True)
-                return
-            total = row["principal"] + row["principal"] * row["interest_pct"] // 100
-            if p["gold"] < total:
-                await interaction.response.send_message(
-                    embed=err_embed(f"Not enough gold to repay! You need {total} gold, "
-                                    f"you have {p['gold']}."),
-                    ephemeral=True)
-                return
-            p["gold"] -= total
-            db.save_player(conn, p)
-            lender = db.get_player(conn, row["lender_id"])
-            if lender:
-                lender["gold"] += total
-                db.save_player(conn, lender)
-            conn.execute("UPDATE loans SET status = 'repaid' WHERE id = ?",
-                         (loan_id,))
-            conn.commit()
-            sent = await self._dm(row["lender_id"], emb(
-                "💰 Loan Repaid!",
-                f"**{p['name']}** repaid your loan: **{total} gold** "
-                f"(principal {row['principal']} + {row['interest_pct']}% interest).",
-                color=COLOR_ECONOMY))
-            await interaction.response.send_message(embed=emb(
-                "💰 Loan Repaid!",
-                f"You repaid **{total} gold** to **{_name(conn, row['lender_id'])}**. "
-                f"The loan is closed.",
-                color=COLOR_ECONOMY))
-            if not sent:
-                await self._warn_dm_failed(interaction)
-            return
 
     # --------------------------------------------------------------- /borrow
     @app_commands.command(name="borrow", description="Borrow an item from a friend (owner sets an optional fee)")

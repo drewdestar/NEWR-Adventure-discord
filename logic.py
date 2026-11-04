@@ -89,6 +89,15 @@ def add_gold(player, amount):
     return amount
 
 
+def pvp_steal_amount(carried_gold):
+    """Gold a PvP winner steals with 'Curi': 10% of the loser's CARRIED
+    gold only (floor). Banked gold is never stealable — it lives in a
+    separate balance this function never sees. Zero or negative carried
+    gold yields 0 (and a tiny positive balance below 10 also yields 0).
+    """
+    return max(0, int(carried_gold) // 10)
+
+
 def vip_active(player, now=None):
     return bool(player.get("vip")) and (player.get("vip_until") or 0) > (now or now_ts())
 
