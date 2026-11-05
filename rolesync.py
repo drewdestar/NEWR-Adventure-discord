@@ -112,6 +112,12 @@ def season_for_ts(conn, ts):
 
 
 def season_role_name(number):
+    # "Season 1", not "Season S1": the S already stood for Season,
+    # so "Season S1" read as Season-Season-1 and looked disconnected.
+    return f"Season {number}"
+
+
+def legacy_season_role_name(number):
     return f"Season S{number}"
 
 
@@ -181,6 +187,17 @@ def _managed_names(conn):
     names.update(["Guild Leader", "Guild Member"])
     names.update(ACHIEVEMENT_NAMES)
     names.update(["Top 10 Power", "Top 10 Wealth", "Top 10 Level"])
+    # Rank roles are written with their category, like "Top 1 Power",
+    # not a bare "Top 1": one set per existing Top 10 metric.
+    for metric in ("Power", "Wealth", "Level"):
+        names.update(f"Top {i} {metric}" for i in range(1, 6))
+    names.update(f"Guild Top {i} Power" for i in range(1, 6))
+    # Season names, current AND legacy, so a rename never leaves the
+    # old role stranded on members: the reconciler removes managed
+    # roles that are no longer desired.
+    for r in conn.execute("SELECT number FROM seasons"):
+        names.add(season_role_name(r[0]))
+        names.add(legacy_season_role_name(r[0]))
     for r in conn.execute("SELECT DISTINCT achievement FROM achievements"):
         names.add(r[0])
     for r in conn.execute("SELECT name FROM guilds"):
@@ -220,6 +237,20 @@ def desired_roles(conn, player, top10=None):
             out.add("Top 10 Wealth")
         if uid in top10["level"]:
             out.add("Top 10 Level")
+        # Global (worldwide) ranks 1-5 per metric, written with the
+        # category: "Top 1 Power", "Top 1 Wealth", "Top 1 Level", etc.
+        # Only computed by the periodic reconciler (top10 is not None).
+        for metric, key in (("Power", "power_ranks"),
+                            ("Wealth", "wealth_ranks"),
+                            ("Level", "level_ranks")):
+            rank = top10.get(key, {}).get(uid)
+            if rank is not None:
+                out.add(f"Top {rank} {metric}")
+        # Guild ranks 1-5 by guild power, for members of ranked guilds.
+        if player.get("guild_id"):
+            grank = top10.get("guild_ranks", {}).get(player["guild_id"])
+            if grank is not None:
+                out.add(f"Guild Top {grank} Power")
     return out
 
 
@@ -233,10 +264,31 @@ def compute_top10(conn):
     by_wealth = sorted(players, key=lambda p: p["gold"], reverse=True)[:10]
     by_level = sorted(players,
                       key=lambda p: (p["level"], p["exp"]), reverse=True)[:10]
+    guilds = []
+    try:
+        guilds = [dict(r) for r in
+                  conn.execute("SELECT * FROM guilds").fetchall()]
+    except Exception:
+        guilds = []
+    guild_ranks = {}
+    for i, g in enumerate(sorted(
+            guilds,
+            key=lambda g: friends_db.guild_power(conn, g["id"])[0],
+            reverse=True)[:5], 1):
+        guild_ranks[g["id"]] = i
     return {
         "power": {p["user_id"] for p in by_power},
         "wealth": {p["user_id"] for p in by_wealth},
         "level": {p["user_id"] for p in by_level},
+        # Individual global ranks 1-5 per metric (worldwide: every
+        # registered player, across all servers the bot is in).
+        "power_ranks": {p["user_id"]: i for i, p in
+                        enumerate(by_power[:5], 1)},
+        "wealth_ranks": {p["user_id"]: i for i, p in
+                         enumerate(by_wealth[:5], 1)},
+        "level_ranks": {p["user_id"]: i for i, p in
+                        enumerate(by_level[:5], 1)},
+        "guild_ranks": guild_ranks,
     }
 
 
@@ -273,7 +325,14 @@ async def sync_member_roles(guild, member, player, conn, top10=None):
             await member.add_roles(role, reason="NEWR Adventure role sync")
         except (discord.Forbidden, discord.HTTPException) as exc:
             log.warning("Cannot grant role %r: %s", name, exc)
-    for name in sorted(set(current) - desired):
+    stale = set(current) - desired
+    if top10 is None:
+        # Immediate syncs do not compute ranks, so they must not strip
+        # Top 10 / Top 1-5 roles; only the reconciler owns those.
+        stale = {n for n in stale
+                 if not (n.startswith("Top ") or
+                         n.startswith("Guild Top "))}
+    for name in sorted(stale):
         role = current[name]
         if role.position >= top_pos:
             continue

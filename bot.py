@@ -98,6 +98,26 @@ def main():
     intents.guilds = True
     bot = commands.Bot(command_prefix="!", intents=intents, **_proxy_kwargs())
 
+    async def sync_guild_commands(guild):
+        """Sync slash commands to one guild (works for any server the
+        bot is added to, not just the primary guild). Best-effort:
+        a failure here must never stop the bot."""
+        try:
+            bot.tree.copy_global_to(guild=guild)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"Slash commands disinkron ke guild {guild.id}: {len(synced)} perintah.")
+        except Exception as exc:
+            print(f"WARNING: gagal sinkron slash commands ke guild {guild.id}: {exc}")
+
+    @bot.event
+    async def on_guild_join(guild):
+        # Bot added to a new server while running: sync commands there
+        # immediately. Players there still use the same central rpg.db
+        # (one database for all servers), so /register, leaderboard
+        # global, and role sync all see the same data.
+        print(f"Bot ditambahkan ke server baru: {guild.name} ({guild.id})")
+        await sync_guild_commands(guild)
+
     @bot.event
     async def on_ready():
         guild_id = os.environ.get("GUILD_ID", "").strip()
@@ -112,7 +132,15 @@ def main():
                 print(f"Slash commands disinkron global: {len(synced)} perintah.")
         except Exception as exc:  # sinkron gagal: bot tetap jalan, log saja
             print(f"WARNING: gagal sinkron slash commands: {exc}")
-        activity = discord.Game("NEWR Adventure by NEWR LABS | /help")
+        # Servers joined while the bot was offline get no on_guild_join,
+        # so sync every guild the bot is currently in as well.
+        for guild in list(bot.guilds):
+            if guild_id and str(guild.id) == guild_id:
+                continue
+            await sync_guild_commands(guild)
+        # Shows in Discord as "Playing NEWR Adventure" on the bot's
+        # profile, exactly like a game activity.
+        activity = discord.Game("NEWR Adventure")
         await bot.change_presence(activity=activity)
         print(f"Bot login sebagai {bot.user} — NEWR Adventure by NEWR LABS siap!")
 

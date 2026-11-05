@@ -237,14 +237,22 @@ class Announce(commands.Cog):
     # ------------------------------------------------------- reconcile loop
     @tasks.loop(minutes=10)
     async def reconcile_loop(self):
-        guild = self._guild()
-        if guild is None:
-            return
+        # Role sync runs for EVERY server the bot is in, not just the
+        # primary guild: a player who joins the bot in another server
+        # still gets their Season / Top / Guild Top roles there, from
+        # the same central database. Announcements stay primary-only
+        # (see announce_loop), only role sync is multi-guild.
+        guilds = list(self.bot.guilds) or []
+        if not guilds:
+            guild = self._guild()
+            guilds = [guild] if guild is not None else []
         conn = get_conn()
-        try:
-            await rolesync.reconcile_guild(guild, conn)
-        except Exception as exc:
-            log.warning("Role reconcile failed: %s", exc)
+        for guild in guilds:
+            try:
+                await rolesync.reconcile_guild(guild, conn)
+            except Exception as exc:
+                log.warning("Role reconcile failed for guild %s: %s",
+                            guild.id, exc)
 
     @announce_loop.before_loop
     @reconcile_loop.before_loop
