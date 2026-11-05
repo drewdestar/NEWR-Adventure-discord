@@ -80,6 +80,7 @@ class Friends(commands.Cog):
     @app_commands.command(name="friend", description="Add, accept, decline, remove, or list friends")
     @app_commands.describe(aksi="add/accept/decline/remove/list",
                            target="Player: mention or user ID (not needed for list)")
+    @app_commands.rename(aksi="action")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="add", value="add"),
         app_commands.Choice(name="accept", value="accept"),
@@ -298,6 +299,7 @@ class Friends(commands.Cog):
                            qty="Quantity (for request)",
                            borrow_id="Borrow ID from /borrow list (for approve/return)",
                            fee="Gold fee set by the owner, 0 = free (for approve)")
+    @app_commands.rename(aksi="action")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="request", value="request"),
         app_commands.Choice(name="approve", value="approve"),
@@ -476,6 +478,7 @@ class Friends(commands.Cog):
     @app_commands.command(name="bossinvite", description="Invite a friend to join an active boss raid")
     @app_commands.describe(aksi="invite/accept/decline",
                            target="Friend: mention or user ID (for invite) or who invited you (for accept/decline)")
+    @app_commands.rename(aksi="action")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="invite", value="invite"),
         app_commands.Choice(name="accept", value="accept"),
@@ -587,6 +590,7 @@ class Friends(commands.Cog):
     @app_commands.command(name="guildinvite", description="Invite a friend into your guild (leader only)")
     @app_commands.describe(aksi="invite/accept/decline",
                            target="Friend: mention or user ID (for invite) or who invited you (for accept/decline)")
+    @app_commands.rename(aksi="action")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="invite", value="invite"),
         app_commands.Choice(name="accept", value="accept"),

@@ -314,7 +314,7 @@ class DuelView(discord.ui.View):
                                  winner["name"], loser["name"], result_desc)
         await interaction.response.edit_message(
             embed=emb('⚔️ Duel Result',
-                      result_desc + f"\n\n**{winner['name']}**, choose what happens next (60 seconds, then Pergi by default):",
+                      result_desc + f"\n\n**{winner['name']}**, choose what happens next (60 seconds, then Leave by default):",
                       color=COLOR_BATTLE),
             view=view)
         try:
@@ -337,14 +337,14 @@ class DuelView(discord.ui.View):
 
 
 class VictoryChoiceView(discord.ui.View):
-    """Post-duel choice for the winner (60 seconds, default Pergi).
+    """Post-duel choice for the winner (60 seconds, default Leave).
 
-    - Curi: steal 10% of the loser's CARRIED gold (logic.pvp_steal_amount).
+    - Steal: steal 10% of the loser's CARRIED gold (logic.pvp_steal_amount).
       Banked gold is never touched; 0 or negative carried gold yields 0.
       Stolen gold does not count toward the winner's gold_earned quest
       counter (a steal is not earnings).
-    - Pergi: leave, nothing happens.
-    - Rumah Sakit: admit the loser to the hospital (heals 10 HP/min,
+    - Leave: leave, nothing happens.
+    - Hospital: admit the loser to the hospital (heals 10 HP/min,
       may leave at 25% of max HP) — a mercy option, no gold moves.
       If the loser is already admitted, the original admission stands
       (no timer reset).
@@ -368,7 +368,7 @@ class VictoryChoiceView(discord.ui.View):
         try:
             await self.message.edit(
                 embed=emb('⚔️ Duel Result',
-                          self.result_desc + f"\n\n**{self.winner_name}** did not choose within 60 seconds — Pergi by default, nothing further happened.",
+                          self.result_desc + f"\n\n**{self.winner_name}** did not choose within 60 seconds — Leave by default, nothing further happened.",
                           color=COLOR_BATTLE),
                 view=self)
         except Exception:
@@ -446,15 +446,15 @@ class VictoryChoiceView(discord.ui.View):
                       color=COLOR_BATTLE),
             view=self)
 
-    @discord.ui.button(label="Curi", style=discord.ButtonStyle.danger, emoji="💰")
+    @discord.ui.button(label="Steal", style=discord.ButtonStyle.danger, emoji="💰")
     async def curi(self, interaction, button):
         await self._finish(interaction, "curi")
 
-    @discord.ui.button(label="Pergi", style=discord.ButtonStyle.secondary, emoji="🚶")
+    @discord.ui.button(label="Leave", style=discord.ButtonStyle.secondary, emoji="🚶")
     async def pergi(self, interaction, button):
         await self._finish(interaction, "pergi")
 
-    @discord.ui.button(label="Rumah Sakit", style=discord.ButtonStyle.success, emoji="🏥")
+    @discord.ui.button(label="Hospital", style=discord.ButtonStyle.success, emoji="🏥")
     async def rumah_sakit(self, interaction, button):
         await self._finish(interaction, "rumah sakit")
 

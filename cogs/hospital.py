@@ -2,7 +2,7 @@
 """Cog hospital: check admission status and leave once healed enough.
 
 Admission happens automatically: monster defeat and PvP when the winner
-picks "Rumah Sakit". Healing is 10 HP per whole minute, computed lazily
+picks "Hospital". Healing is 10 HP per whole minute, computed lazily
 from the admission row (see hospital_db) — no background loop needed.
 
 - /hospital status: current (computed) HP, max HP, minutes until you

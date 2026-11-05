@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import database as db
+import i18n
 import logic
 import rolesync
 from .common import (COLOR_SOCIAL, add_guild_exp, bar_line, emb, err_embed,
@@ -86,9 +87,16 @@ class Social(commands.Cog):
             p["guild_id"] = gid
             db.save_player(conn, p)
             conn.commit()
+            # Translate the TEMPLATE first, then fill in names: emb()
+            # translates the already-formatted text, so formatting first
+            # would never match the translation table (that's how the
+            # old hardcoded Indonesian sentence leaked to English users).
+            guild_created = i18n.t(
+                '**{name}** is officially founded, led by {leader}! '
+                'Invite friends to join with `/guild join {name}`.').format(
+                    name=nama, leader=p['name'])
             await interaction.response.send_message(embed=emb('🏰 Guild Created!',
-                f"**{nama}** resmi berdiri, dipimpin {p['name']}! "
-                f"Invite friends to join with `/guild join {nama}`.",
+                guild_created,
                 color=COLOR_SOCIAL))
             await self._sync_roles(interaction, conn, p)
             return
