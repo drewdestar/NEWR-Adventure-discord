@@ -46,6 +46,7 @@ COGS = [
     "cogs.premium",
     "cogs.extra",
     "cogs.lang",
+    "cogs.linkcode",
     "cogs.friends",
     "cogs.guildpower",
     "cogs.leaderboard",
