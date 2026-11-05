@@ -33,7 +33,7 @@ class Survival(commands.Cog):
                 f"Equipped gear:\n" + ("\n".join(gear_lines) if gear_lines else "No gear equipped."),
                 color=COLOR_SURVIVAL)
         for w in warnings_for(p):
-            e.add_field(name="Warning", value=w, inline=False)
+            e.add_field(name=i18n.t("Warning"), value=w, inline=False)
         await interaction.response.send_message(embed=e)
 
     async def _consume(self, interaction, item, want):

@@ -19,7 +19,7 @@ from data import (AREAS, CLASSES, EVOLUTIONS, ITEMS, MONSTERS, QUESTS,
                 REGISTER_PROLOGUE, REGISTER_STORIES)
 from .common import (COLOR_CORE, bar_line, bump_daily, emb, err_embed,
                      get_conn, guild_buff_text, guild_level_of,
-                     load_player, need_player, reward, sync_quests, warnings_for)
+                     load_player, need_player, reward, sync_quests, warnings_for, TranslatedView)
 
 STARTER_WEAPON = {
     "Warrior": "pedang kayu",
@@ -106,15 +106,16 @@ class InventorySelect(discord.ui.Select):
         for row in inv[:25]:
             desc = f"x{row['qty']}"
             if row["equipped"]:
-                desc += ' • equipped'
+                desc += i18n.t(' • equipped')
             if ITEMS.get(row["item_id"], {}).get("type") in ("weapon", "armor"):
-                desc += ' • durability {d}'.format(d=row['durability'])
+                desc += i18n.t_fmt(' • dur {d}', d=row['durability'])
             options.append(discord.SelectOption(
                 label=disp.item(row["item_id"])[:100], description=desc[:100],
                 value=row["item_id"]))
-        super().__init__(placeholder='Choose an item...', options=options)
+        super().__init__(placeholder=i18n.t('Choose an item...'), options=options)
 
     async def callback(self, interaction):
+        i18n.set_ctx(interaction, get_conn())
         if interaction.user.id != self.owner_id:
             await interaction.response.send_message(
                 embed=err_embed("That's someone else's bag!"), ephemeral=True)
@@ -147,13 +148,13 @@ class InventorySelect(discord.ui.Select):
         await interaction.response.edit_message(embed=e, view=view)
 
 
-class InventoryView(discord.ui.View):
+class InventoryView(TranslatedView):
     def __init__(self, owner_id, inv):
         super().__init__(timeout=300)
         self.add_item(InventorySelect(owner_id, inv))
 
 
-class ItemActionView(discord.ui.View):
+class ItemActionView(TranslatedView):
     """Tombol aksi buat satu item terpilih — hanya aksi yang masuk akal
     buat tipe item itu (Use buat potion/food, Equip/Unequip buat
     weapon/armor, tanpa tombol buat material/rare/seed/petgear)."""

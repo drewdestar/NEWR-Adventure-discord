@@ -10,7 +10,7 @@ import database as db
 import display as disp
 import logic
 from data import BLACKMARKET_POOL, GACHA_POOL, ITEMS, RECIPES, SHOP_STOCK
-from .common import COLOR_ECONOMY, emb, err_embed, get_conn, need_player, sync_quests
+from .common import COLOR_ECONOMY, emb, err_embed, get_conn, need_player, TranslatedView, sync_quests
 
 
 def item_line(item_id):
@@ -60,7 +60,7 @@ def execute_trade_decline(conn, trade_id, acceptor_id):
     return True, "Trade declined."
 
 
-class TradeView(discord.ui.View):
+class TradeView(TranslatedView):
     """Tombol Terima / Tolak buat tawaran trade. Cuma penerima yang bisa klik."""
 
     def __init__(self, trade_id, to_id):
@@ -146,7 +146,7 @@ def bm_cart_embed(owner_id):
     return emb('🛒 Your Cart', "\n".join(lines), color=COLOR_ECONOMY)
 
 
-class BMCartView(discord.ui.View):
+class BMCartView(TranslatedView):
     """Checkout / kosongkan keranjang Black Market."""
 
     def __init__(self, owner_id):
@@ -215,7 +215,7 @@ class BMCartView(discord.ui.View):
         await interaction.response.edit_message(embed=bm_cart_embed(self.owner_id), view=self)
 
 
-class BMQtyView(discord.ui.View):
+class BMQtyView(TranslatedView):
     """Pilih jumlah buat satu item Black Market, lalu masuk keranjang."""
 
     def __init__(self, owner_id, item_id, stock):
@@ -279,7 +279,7 @@ class BMQtyView(discord.ui.View):
             embed=bm_cart_embed(self.owner_id), view=BMCartView(self.owner_id))
 
 
-class BlackMarketView(discord.ui.View):
+class BlackMarketView(TranslatedView):
     """Daftar Black Market gaya kolom inventory: satu tombol Buy per item
     + tombol keranjang. Hanya pemilik daftar yang bisa klik tombolnya."""
 

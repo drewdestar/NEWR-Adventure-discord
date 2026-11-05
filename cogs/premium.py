@@ -10,6 +10,7 @@ from discord.ext import commands
 import database as db
 import display as disp
 import logic
+import i18n
 from data import ITEMS
 from .common import COLOR_PREMIUM, emb, err_embed, get_conn, need_player
 
@@ -40,6 +41,7 @@ class Premium(commands.Cog):
     @app_commands.command(name="vipgrant", description="Give 30 days of VIP to a player (server admins only)")
     @app_commands.describe(target="Player receiving VIP: mention or user ID")
     async def vipgrant(self, interaction: discord.Interaction, target: discord.User):
+        i18n.set_ctx(interaction, get_conn())
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message(
                 embed=err_embed('Only server admins can grant VIP.'),
@@ -116,6 +118,7 @@ class Premium(commands.Cog):
 
     @app_commands.command(name="event", description="View currently active seasonal events")
     async def event(self, interaction: discord.Interaction):
+        i18n.set_ctx(interaction, get_conn())
         events = logic.active_events()
         if not events:
             await interaction.response.send_message(embed=emb('🎉 Seasonal Event','No seasonal event is active right now.\nEvents: **Halloween** (20-31 Oct), **Christmas** (20-26 Dec), **New Year** (30 Dec-2 Jan), **Summer Festival** (1-31 Jul), **Harvest Festival** (1-30 Sep). Weekly raid bosses rotate: Demon King, Void King, Snow Queen.\nDuring an active event, the shop gets special stock and event bosses appear in `/raid`.',

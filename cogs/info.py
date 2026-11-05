@@ -27,6 +27,7 @@ import display as disp
 import friends_db
 import info_db
 import logic
+import i18n
 from data import (AREAS, BLACKMARKET_POOL, CLASSES, EVENTS, EVOLUTIONS,
                   GACHA_POOL, ITEMS, MONSTERS, PETS, PET_ADOPT_COST,
                   RECIPES, SHOP_STOCK, WEEKLY_BOSS, WEEKLY_BOSSES)
@@ -276,6 +277,7 @@ class Info(commands.Cog):
                    name: str = "",
                    user: Optional[discord.User] = None):
         conn = get_conn()
+        i18n.set_ctx(interaction, conn)
         info_db.ensure_tables(conn)
         handler = {
             "events": self._events,

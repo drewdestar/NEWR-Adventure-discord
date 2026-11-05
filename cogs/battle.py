@@ -14,9 +14,11 @@ import guildbank_db
 import hospital_db
 import info_db
 import logic
+import i18n
 import rolesync
 from data import AREAS, ITEMS, WEEKLY_BOSS, WEEKLY_BOSSES
 from .common import (COLOR_BATTLE, add_guild_exp, bar_line, bump_daily, emb,
+                     TranslatedView,
                      err_embed, get_conn, guild_level_of, load_player,
                      need_player, reward, sync_quests)
 
@@ -87,7 +89,7 @@ async def _hospital_gate(interaction, conn, p):
     return True
 
 
-class FightView(discord.ui.View):
+class FightView(TranslatedView):
     def __init__(self, cog, interaction, player, monster):
         super().__init__(timeout=180)
         self.cog = cog
@@ -265,7 +267,7 @@ class FightView(discord.ui.View):
             view=self)
 
 
-class DuelView(discord.ui.View):
+class DuelView(TranslatedView):
     def __init__(self, challenger_id, target_id, challenger_name, target_name):
         super().__init__(timeout=120)
         self.challenger_id = challenger_id
@@ -336,7 +338,7 @@ class DuelView(discord.ui.View):
             view=self)
 
 
-class VictoryChoiceView(discord.ui.View):
+class VictoryChoiceView(TranslatedView):
     """Post-duel choice for the winner (60 seconds, default Leave).
 
     - Steal: steal 10% of the loser's CARRIED gold (logic.pvp_steal_amount).
@@ -673,6 +675,7 @@ class Battle(commands.Cog):
     @app_commands.command(name="arena", description="Server PVP ranking")
     async def arena(self, interaction: discord.Interaction):
         conn = get_conn()
+        i18n.set_ctx(interaction, conn)
         rows = conn.execute(
             "SELECT * FROM pvp_rank ORDER BY points DESC LIMIT 10").fetchall()
         if not rows:

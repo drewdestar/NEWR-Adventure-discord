@@ -32,7 +32,7 @@ import database as db
 import display as disp
 import guildbank_db as gb
 from data import ITEMS
-from .common import COLOR_ECONOMY, COLOR_SOCIAL, emb, err_embed, get_conn, need_player
+from .common import COLOR_ECONOMY, COLOR_SOCIAL, emb, err_embed, get_conn, need_player, TranslatedView
 
 
 def _conn():
@@ -87,7 +87,7 @@ def _approve_loan(conn, loan):
     return True, "Guild loan approved: " + " + ".join(parts) + "."
 
 
-class _GuildLoanApproveView(discord.ui.View):
+class _GuildLoanApproveView(TranslatedView):
     """Leader approval buttons sent by DM. The command path
     (/guildloan approve) always works even after these buttons expire
     or the bot restarts."""
@@ -420,9 +420,14 @@ class GuildBank(commands.Cog):
         if item_id:
             desc += f"• **{disp.item(item_id)} x{qty}** (return as-is)\n"
         desc += "Nothing moves until the guild leader approves."
+        # DM goes to the leader in THE LEADER's language, not the
+        # requester's: set their context before building view + embed,
+        # then restore the requester's context for the reply below.
+        i18n.set_ctx_for_user(guild["leader_id"], conn)
         view = _GuildLoanApproveView(lid, guild["leader_id"])
         sent = await self._dm_leader(guild["leader_id"], emb(
             "🏰 Guild Loan Request", desc, color=COLOR_SOCIAL), view)
+        i18n.set_ctx(interaction, conn)
         note = ("The leader was notified by DM — approve with the buttons there."
                 if sent else
                 "The leader could not be reached by DM — they can approve with "

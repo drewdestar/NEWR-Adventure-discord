@@ -29,12 +29,60 @@ COLOR_EXTRA = 0xF97316     # oranye — casino, job, house, dungeon, meteor, sto
 COLOR_ERROR = 0xEF4444     # merah — semua pesan error/notifikasi gagal
 
 
-def emb(title, desc="", color=COLOR_CORE):
+class TranslatedView(discord.ui.View):
+    """Base for every interactive view.
+
+    Two fixes in one place (this is why buttons used to stay English):
+    1. Labels/placeholders are translated at construction time, when the
+       handler has already set the i18n context for the clicking user.
+       Decorator labels are static English, so translating them here --
+       after super().__init__() has materialised the items -- is the
+       only way a button can ever show the user's language.
+    2. interaction_check() re-sets the i18n context for every button /
+       select interaction, because a view callback runs in a fresh task
+       where the contextvars from the original command are gone (they
+       used to silently fall back to English, so fight results, duel
+       choices and trade buttons answered in English even for an
+       Indonesian user). Returning True keeps every existing owner
+       check inside the callbacks themselves.
+    Select option LABELS are item names (canonical game terms) and are
+    deliberately left untouched; only placeholders and descriptions go
+    through translation.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for child in self.children:
+            try:
+                if isinstance(child, discord.ui.Button) and child.label:
+                    child.label = i18n.t(child.label)
+                elif isinstance(child, discord.ui.Select):
+                    if child.placeholder:
+                        child.placeholder = i18n.t(child.placeholder)
+                    for opt in child.options:
+                        if opt.description:
+                            opt.description = i18n.t(opt.description)
+            except Exception:
+                pass
+
+    async def interaction_check(self, interaction):
+        try:
+            i18n.set_ctx(interaction, get_conn())
+        except Exception:
+            pass
+        return True
+
+
+def emb(title, desc="", color=COLOR_CORE, raw=False):
     """Central embed builder. Title/description pass through the i18n
     layer: central-path strings translate to the caller's language,
     everything else keeps the English base. Footer credit stays
-    'NEWR Adventure by NEWR LABS' (footer only, no author link)."""
-    e = discord.Embed(title=i18n.t(title), description=i18n.t(desc),
+    'NEWR Adventure by NEWR LABS' (footer only, no author link).
+    raw=True skips translation entirely: use it ONLY for admin/player
+    authored text (announcements, custom rules), which must be shown
+    exactly as written, never machine-translated."""
+    e = discord.Embed(title=title if raw else i18n.t(title),
+                      description=desc if raw else i18n.t(desc),
                       color=color)
     e.set_footer(text=f"{TITLE} {CREDIT}")
     return e

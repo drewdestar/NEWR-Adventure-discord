@@ -21,7 +21,7 @@ from discord.ext import commands
 import botloan_db
 import database as db
 import guildbank_db
-from .common import COLOR_ECONOMY, emb, err_embed, get_conn, need_player
+from .common import COLOR_ECONOMY, emb, err_embed, get_conn, need_player, TranslatedView
 
 
 def _conn():
@@ -36,7 +36,7 @@ def _wib(ts):
         ts, tz=timezone(timedelta(hours=7))).strftime("%d %b %Y %H:%M WIB")
 
 
-class _ConfirmView(discord.ui.View):
+class _ConfirmView(TranslatedView):
     """Confirm-before-move: gold moves only after the borrower clicks Confirm."""
 
     def __init__(self, user_id, amount, interest, total):

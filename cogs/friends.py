@@ -135,12 +135,14 @@ class Friends(commands.Cog):
                 "INSERT INTO friend_requests (from_id, to_id, created_at) "
                 "VALUES (?, ?, ?)", (me, target.id, friends_db.now()))
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "👥 Friend Request!",
                 f"**{p['name']}** wants to be your friend!\n"
                 f"Accept with `/friend accept @{interaction.user.name}` "
                 f"or decline with `/friend decline @{interaction.user.name}`.",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "👥 Friend Request Sent",
                 f"Request sent to **{t['name']}**. They need to accept before "
@@ -164,10 +166,12 @@ class Friends(commands.Cog):
                 (req["id"],))
             conn.commit()
             friends_db.add_friendship(conn, me, target.id)
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "👥 Friend Request Accepted!",
                 f"**{p['name']}** accepted your friend request. You are now friends!",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "👥 Friends!",
                 f"You and **{t['name']}** are now friends. You can invite each "
@@ -191,10 +195,12 @@ class Friends(commands.Cog):
                 "UPDATE friend_requests SET status = 'declined' WHERE id = ?",
                 (req["id"],))
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "👥 Friend Request Declined",
                 f"**{p['name']}** declined your friend request.",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "👥 Friend Request Declined",
                 f"You declined **{t['name']}**'s friend request.",
@@ -210,10 +216,12 @@ class Friends(commands.Cog):
                     ephemeral=True)
                 return
             friends_db.remove_friendship(conn, me, target.id)
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "👥 Friend Removed",
                 f"**{p['name']}** removed you from their friend list.",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "👥 Friend Removed",
                 f"**{t['name']}** is no longer on your friend list.",
@@ -280,10 +288,12 @@ class Friends(commands.Cog):
             parts.append(f"**{gold} gold**")
         if item:
             parts.append(f"**{item} x{qty}**")
+        i18n.set_ctx_for_user(target.id, conn)
         sent = await self._dm(target.id, emb(
             "🎁 You Received a Transfer!",
             f"**{p['name']}** sent you {' + '.join(parts)}!",
             color=COLOR_ECONOMY))
+        i18n.set_ctx(interaction, conn)
         await interaction.response.send_message(embed=emb(
             "🎁 Transfer Sent",
             f"You sent {' + '.join(parts)} to **{t['name']}**.",
@@ -367,12 +377,14 @@ class Friends(commands.Cog):
                 (target.id, me, item, qty, friends_db.now()))
             bid = cur.lastrowid
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "📦 Borrow Request!",
                 f"**{p['name']}** wants to borrow **{item} x{qty}** from you.\n"
                 f"Approve with `/borrow approve {bid} [fee]` (fee 0 = free) — "
                 f"nothing moves until you approve.",
                 color=COLOR_ECONOMY))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "📦 Borrow Request Sent",
                 f"Asked **{t['name']}** for **{item} x{qty}** (ID {bid}). "
@@ -422,12 +434,14 @@ class Friends(commands.Cog):
                 "UPDATE borrows SET status = 'approved', fee = ? WHERE id = ?",
                 (fee, borrow_id))
             conn.commit()
+            i18n.set_ctx_for_user(row["borrower_id"], conn)
             sent = await self._dm(row["borrower_id"], emb(
                 "📦 Borrow Approved!",
                 f"**{p['name']}** lent you **{row['item_id']} x{row['qty']}**"
                 + (f" for a fee of **{fee} gold**." if fee else " for free.")
                 + f"\nReturn it with `/borrow return {borrow_id}`.",
                 color=COLOR_ECONOMY))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "📦 Borrow Approved!",
                 f"You lent **{row['item_id']} x{row['qty']}** to "
@@ -461,10 +475,12 @@ class Friends(commands.Cog):
             conn.execute("UPDATE borrows SET status = 'returned' WHERE id = ?",
                          (borrow_id,))
             conn.commit()
+            i18n.set_ctx_for_user(row["owner_id"], conn)
             sent = await self._dm(row["owner_id"], emb(
                 "📦 Item Returned!",
                 f"**{p['name']}** returned your **{row['item_id']} x{row['qty']}**.",
                 color=COLOR_ECONOMY))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "📦 Item Returned!",
                 f"You returned **{row['item_id']} x{row['qty']}** to "
@@ -516,12 +532,14 @@ class Friends(commands.Cog):
                 "VALUES (?, ?, ?, ?)",
                 (me, target.id, raid["id"], friends_db.now()))
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "🐉 Boss Raid Invite!",
                 f"**{p['name']}** invites you to fight **{raid['boss']}**!\n"
                 f"Accept with `/bossinvite accept @{interaction.user.name}` "
                 f"to join the raid.",
                 color=COLOR_BATTLE))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "🐉 Boss Invite Sent",
                 f"Invited **{t['name']}** to the **{raid['boss']}** raid.",
@@ -547,10 +565,12 @@ class Friends(commands.Cog):
             conn.execute("UPDATE boss_invites SET status = 'declined' WHERE id = ?",
                          (inv["id"],))
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "🐉 Boss Invite Declined",
                 f"**{p['name']}** declined your boss raid invite.",
                 color=COLOR_BATTLE))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "🐉 Boss Invite Declined",
                 "You declined the boss raid invite.", color=COLOR_BATTLE))
@@ -574,11 +594,13 @@ class Friends(commands.Cog):
         conn.execute("UPDATE boss_invites SET status = 'accepted' WHERE id = ?",
                      (inv["id"],))
         conn.commit()
+        i18n.set_ctx_for_user(target.id, conn)
         sent = await self._dm(target.id, emb(
             "🐉 Boss Invite Accepted!",
             f"**{p['name']}** joined your **{raid['boss']}** raid! "
             f"Attack with `/raid hit`.",
             color=COLOR_BATTLE))
+        i18n.set_ctx(interaction, conn)
         await interaction.response.send_message(embed=emb(
             "🐉 Boss Raid Joined!",
             f"You joined the **{raid['boss']}** raid! Attack with `/raid hit`.",
@@ -633,12 +655,14 @@ class Friends(commands.Cog):
                 "VALUES (?, ?, ?, ?)",
                 (guild["id"], me, target.id, friends_db.now()))
             conn.commit()
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "🏰 Guild Invite!",
                 f"**{p['name']}** invites you to join the guild **{guild['name']}**!\n"
                 f"Accept with `/guildinvite accept @{interaction.user.name}` "
                 f"or decline with `/guildinvite decline @{interaction.user.name}`.",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "🏰 Guild Invite Sent",
                 f"Invited **{t['name']}** to join **{guild['name']}**.",
@@ -665,11 +689,13 @@ class Friends(commands.Cog):
                          (inv["id"],))
             conn.commit()
             guild = db.get_guild(conn, inv["guild_id"])
+            i18n.set_ctx_for_user(target.id, conn)
             sent = await self._dm(target.id, emb(
                 "🏰 Guild Invite Declined",
                 f"**{p['name']}** declined the invite to "
                 f"**{guild['name'] if guild else 'your guild'}**.",
                 color=COLOR_SOCIAL))
+            i18n.set_ctx(interaction, conn)
             await interaction.response.send_message(embed=emb(
                 "🏰 Guild Invite Declined",
                 "You declined the guild invite.", color=COLOR_SOCIAL))
@@ -695,10 +721,12 @@ class Friends(commands.Cog):
         conn.execute("UPDATE guild_invites SET status = 'accepted' WHERE id = ?",
                      (inv["id"],))
         conn.commit()
+        i18n.set_ctx_for_user(target.id, conn)
         sent = await self._dm(target.id, emb(
             "🏰 Guild Invite Accepted!",
             f"**{p['name']}** joined your guild **{guild['name']}**!",
             color=COLOR_SOCIAL))
+        i18n.set_ctx(interaction, conn)
         await interaction.response.send_message(embed=emb(
             "🏰 Welcome to the Guild!",
             f"You joined **{guild['name']}**!",

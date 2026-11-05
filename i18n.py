@@ -7,9 +7,10 @@ Design (user direction 2026-11-05 02:22 WIB):
   * Every other Discord locale resolves through: offline table -> cache
     -> online (MyMemory, free, no key) -> English base.
   * A translation failure NEVER breaks a command: it falls back to English.
-  * Only strings in KNOWN (the central-path string set = ID_TABLE keys)
-    are ever translated. Any other string keeps the English base, so
-    non-wired cogs stay English for now.
+  * Every user-visible string is translated: the offline table covers the
+    central paths, everything else goes through cache -> online (MyMemory)
+    with protected placeholders, /commands and game-content names, and
+    falls back to the English base when no translation is available.
   * Internal keys/IDs are never translated: this module only maps
     complete user-visible strings, never item/area/monster/pet keys
     (those use display.py).
@@ -22,6 +23,7 @@ Usage:
 """
 
 import contextvars
+import re
 import html
 import json
 import sqlite3
@@ -98,14 +100,7 @@ def set_ctx(interaction, conn):
     Call once at the start of a handler (need_player does this). The
     values live in contextvars, so they never leak into other tasks.
     """
-    lang = "en"
-    try:
-        if conn is not None:
-            lang = get_lang(conn, interaction.user.id)
-    except Exception:
-        lang = "en"
-    _lang_var.set(lang if lang in SUPPORTED_VALUES else "en")
-    _conn_var.set(conn)
+    set_ctx_for_user(interaction.user.id, conn)
 
 
 # ---------------------------------------------------------------- DB ---
@@ -192,38 +187,213 @@ def _online(text, lang):
 
 # ---------------------------------------------------------- translate ---
 
-def translate(text, lang=None, conn=None):
-    """Resolve one user-visible string.
+# Strong Indonesian markers: if a translation for a NON-Indonesian target
+# comes back containing these, it is rejected and English is used instead.
+# (Never show Indonesian to a non-Indonesian user.)
+_ID_MARKERS = re.compile(
+    r"\b(kamu|nggak|tidak|sudah|belum|buat|pakai|dengan|untuk|dari|adalah|"
+    r"juga|kalau|saat|ketika|dapat|harus|akan|jika|atau|sangat|semua|"
+    r"setiap|antara|oleh|pada|dalam|jangan|silakan|tolong|terima|tolak|"
+    r"menang|kalah|banget|lagi|masih|cuma|bisa|boleh|mau|ingin|coba|"
+    r"lihat|cek|beli|jual|bayar|kerja|latih|pelihara|tanam|panen|"
+    r"bangun|naik|habis|penuh|kosong|baru|besar|kecil|cepat|kuat|lemah)\b",
+    re.I)
 
-    Chain: user-language table -> cache -> online -> English base.
-    Only strings in KNOWN (central paths) are translated; everything
-    else keeps the English base. Never raises.
+_TEMPLATE_RES = None
+
+
+def _template_regexes():
+    """Compile ID_TABLE templates into regexes (longest template first).
+
+    A template like 'You bought {item} x{qty}...' matches the formatted
+    string 'You bought Small Potion x2...' and yields the captured groups
+    in placeholder order. This is what makes translate-template-first work
+    for call sites that formatted BEFORE calling emb(): the formatted
+    string is matched back to its template, translated, and re-filled.
+    """
+    global _TEMPLATE_RES
+    if _TEMPLATE_RES is not None:
+        return _TEMPLATE_RES
+    out = []
+    for key in sorted(ID_TABLE, key=len, reverse=True):
+        names = re.findall(r"\{([^}]+)\}", key)
+        pat = re.escape(key)
+        pat = re.sub(r"\\\{[^}]+\\\}", r"(.+?)", pat)
+        try:
+            out.append((re.compile("^" + pat + "$", re.S), names, key))
+        except re.error:
+            continue
+    _TEMPLATE_RES = out
+    return out
+
+
+def _display_pairs():
+    """(English display name, Indonesian internal key) pairs, longest first.
+
+    Game content names are canonical terms: they are protected from machine
+    translation (a shop item must keep one searchable name) and, for
+    Indonesian, rendered with their Indonesian key; for every other
+    language they stay in English. Imported lazily so display.py never
+    needs to import this module.
+    """
+    try:
+        import display as _disp
+    except Exception:
+        return []
+    pairs = []
+    for table in (_disp.ITEM_EN, _disp.AREA_EN, _disp.MONSTER_EN,
+                  _disp.PET_EN, _disp.PET_SKILL_EN, _disp.PET_FORM_EN,
+                  _disp.SKILL_EN, _disp.JOB_EN, _disp.CROP_EN,
+                  _disp.ANIMAL_EN):
+        for key, val in table.items():
+            if val and val != key:
+                pairs.append((val, key))
+    for key, (name, _desc, boss) in _disp.EVENT_EN.items():
+        if name and name != key:
+            pairs.append((name, key))
+        if boss and boss != key:
+            pairs.append((boss, key))
+    pairs.sort(key=lambda kv: -len(kv[0]))
+    return pairs
+
+
+def _protect(text, lang):
+    """Replace must-not-translate spans with __TK<n>__ tokens.
+
+    Protected: `code` spans, {placeholders}, /slash commands, URLs, and
+    canonical game-content names. Returns (masked, restore_dict) where the
+    restore value is the Indonesian key for lang 'id' and the English
+    name for every other language.
+    """
+    tokens = {}
+
+    def _tok(value):
+        tok = "__TK%d__" % len(tokens)
+        tokens[tok] = value
+        return tok
+
+    masked = text
+    masked = re.sub(r"`[^`]+`", lambda m: _tok(m.group(0)), masked)
+    masked = re.sub(r"\{[^}]+\}", lambda m: _tok(m.group(0)), masked)
+    masked = re.sub(r"https?://\S+", lambda m: _tok(m.group(0)), masked)
+    masked = re.sub(r"/[a-zA-Z]+(?: [a-zA-Z]+)?", lambda m: _tok(m.group(0)), masked)
+    for en_name, id_key in _display_pairs():
+        if en_name in masked:
+            restore = id_key if lang == "id" else en_name
+            masked = re.sub(r"(?<!\w)" + re.escape(en_name) + r"(?!\w)",
+                            lambda m, r=restore: _tok(r), masked)
+    return masked, tokens
+
+
+def _restore(text, tokens):
+    for tok, value in tokens.items():
+        text = text.replace(tok, value)
+    return text
+
+
+def _looks_indonesian(text):
+    return bool(_ID_MARKERS.search(text or ""))
+
+
+def _translate_id_table(text):
+    """Exact table hit, else template match with display-name conversion.
+
+    Captured groups that are exactly an English display name are rendered
+    with the Indonesian key, so an Indonesian sentence never carries an
+    English item/monster name inside it.
+    """
+    hit = ID_TABLE.get(text)
+    if hit is not None:
+        return hit
+    pairs = dict(_display_pairs())
+    for rx, names, key in _template_regexes():
+        m = rx.match(text)
+        if not m:
+            continue
+        groups = m.groups()
+        mapping = {}
+        for name, group in zip(names, groups):
+            mapping[name] = pairs.get(group, group)
+        try:
+            return ID_TABLE[key].format_map(mapping)
+        except Exception:
+            continue
+    return None
+
+
+def translate(text, lang=None, conn=None):
+    """Resolve one user-visible string to the user's language.
+
+    Chain: Indonesian table / template match -> cache -> online
+    (MyMemory, protected tokens) -> English base. Only strings in the
+    offline table are translated without network; EVERY other string is
+    translated through cache/online instead of being silently left in
+    English, so a reply is never a mix of two languages. A missing or
+    failed translation ALWAYS falls back to the English base -- never to
+    Indonesian -- for non-Indonesian users. Never raises.
     """
     if not text:
         return text
     lang = lang or _lang_var.get() or "en"
-    if lang == "en":
+    if lang == "en" or lang not in SUPPORTED_VALUES:
         return text
     if lang == "id":
-        return ID_TABLE.get(text, text)
-    if text not in KNOWN:
-        return text
+        hit = _translate_id_table(text)
+        if hit is not None:
+            return hit
     c = conn if conn is not None else _conn_var.get()
     if c is not None:
         cached = _cache_get(c, text, lang)
         if cached:
             return cached
-    out = _online(text, lang)
+    masked, tokens = _protect(text, lang)
+    out = _online(masked, lang)
     if out:
+        restored = _restore(out, tokens)
+        if lang != "id" and _looks_indonesian(restored):
+            return text
         if c is not None:
-            _cache_put(c, text, lang, out)
-        return out
+            _cache_put(c, text, lang, restored)
+        return restored
     return text
 
 
 def t(text):
     """translate() using the current interaction's language/connection."""
     return translate(text, _lang_var.get(), _conn_var.get())
+
+
+def t_fmt(template, **kwargs):
+    """Translate-template-first: translate the TEMPLATE, then format it.
+
+    This is the preferred way to build a reply: the template (with
+    {placeholders} intact) is what the translation table / cache knows,
+    so names, numbers and gold amounts can never break the lookup.
+    Command names inside the template are protected and never translated.
+    """
+    lang = _lang_var.get() or "en"
+    out = translate(template, lang, _conn_var.get())
+    if lang == "id" and kwargs:
+        pairs = dict(_display_pairs())
+        kwargs = {k: (pairs.get(v, v) if isinstance(v, str) else v)
+                  for k, v in kwargs.items()}
+    return out.format(**kwargs)
+
+
+def set_ctx_for_user(user_id, conn):
+    """Set language + connection for a user id (no interaction needed).
+
+    Used by view callbacks and DM builders, which run outside the
+    original command interaction and would otherwise fall back to English.
+    """
+    lang = "en"
+    try:
+        if conn is not None:
+            lang = get_lang(conn, user_id)
+    except Exception:
+        lang = "en"
+    _lang_var.set(lang if lang in SUPPORTED_VALUES else "en")
+    _conn_var.set(conn)
 
 
 # -------------------------------------------------------
@@ -554,6 +724,17 @@ ID_TABLE = {
 
 # Extra central-path strings added during wiring (English -> ID).
 ID_EXTRA = {
+    # Button labels (exact offline entries: single words mistranslate
+    # through machine translation, e.g. "Steal" -> "Mencuri Bola").
+    "Steal": "Curi",
+    "Leave": "Pergi",
+    "Hospital": "Rumah Sakit",
+    "Confirm": "Konfirmasi",
+    "Cancel": "Batal",
+    "Clear cart": "Kosongkan keranjang",
+    "Add to cart": "Tambah ke keranjang",
+    "Cart": "Keranjang",
+    "Approve": "Setujui",
     "🎮 Character Created!": "🎮 Karakter dibuat!",
     "Welcome, **{name}** the {cls}!": "Selamat datang, **{name}** si {cls}!",
     "Starter tier: **{tier}** (+{pct}% stats)": "Tier starter: **{tier}** (+{pct}% stat)",
