@@ -119,18 +119,32 @@ class LinkCode(commands.Cog):
                     "/linkcode again."))
             return
         code, reused = result
+        # Tap-to-copy + tap-to-link (2026-11-05): the code sits in its
+        # own code block, which Discord renders with a copy icon, so
+        # tapping it copies just the code. Discord has no clipboard
+        # button component, so the deep link below is the real
+        # one-tap path: tapping it opens Telegram and /start redeems
+        # the code automatically (see the Telegram bot's cmd_start).
         if reused:
             desc = i18n.t_fmt(
-                "You already have a link code that is still valid. "
-                "Send this code to @NEWRAdventureBot on Telegram:\n"
-                "`/link {code}`\n"
+                "You already have a link code that is still valid.\n"
+                "Tap this link to link automatically:\n"
+                "https://t.me/NEWRAdventureBot?start={code}\n"
+                "Or copy the code below (tap the copy icon on the code "
+                "block) and send it to @NEWRAdventureBot on Telegram:\n"
+                "```\n{code}\n```\n"
+                "Or send `/link {code}` in Telegram.\n"
                 "It is single-use and expires 24 hours after it was issued.",
                 code=code)
         else:
             desc = i18n.t_fmt(
-                "Your Telegram link code is:\n`{code}`\n"
-                "Send this code to @NEWRAdventureBot on Telegram:\n"
-                "`/link {code}`\n"
+                "Your Telegram link code is:\n"
+                "Tap this link to link automatically:\n"
+                "https://t.me/NEWRAdventureBot?start={code}\n"
+                "Or copy the code below (tap the copy icon on the code "
+                "block) and send it to @NEWRAdventureBot on Telegram:\n"
+                "```\n{code}\n```\n"
+                "Or send `/link {code}` in Telegram.\n"
                 "It is single-use and expires in 24 hours. "
                 "Do not share it with anyone else.",
                 code=code)

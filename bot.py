@@ -133,6 +133,18 @@ def main():
                 print(f"Slash commands disinkron global: {len(synced)} perintah.")
         except Exception as exc:  # sinkron gagal: bot tetap jalan, log saja
             print(f"WARNING: gagal sinkron slash commands: {exc}")
+        # DM fix (2026-11-05): guild-only sync never reaches DMs, so
+        # /linkcode (DM-only by design) was invisible in DM and the bot
+        # looked like it could not read DMs at all. Always sync globally
+        # too, so the same commands appear in DMs. NOTE: Discord takes
+        # up to ~1 hour to propagate global commands, so DM commands
+        # may not show up instantly after a restart even when this
+        # sync succeeds; guild commands stay instant.
+        try:
+            synced = await bot.tree.sync()
+            print(f"Slash commands disinkron global (untuk DM): {len(synced)} perintah.")
+        except Exception as exc:
+            print(f"WARNING: gagal sinkron global slash commands: {exc}")
         # Servers joined while the bot was offline get no on_guild_join,
         # so sync every guild the bot is currently in as well.
         for guild in list(bot.guilds):
