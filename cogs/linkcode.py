@@ -104,7 +104,8 @@ class LinkCode(commands.Cog):
         if message.author.bot or message.guild is not None:
             return
         if message.content.strip().lower() not in (
-                "link", "code", "linkcode", "/linkcode", "kode"):
+                "link", "code", "linkcode", "/linkcode", "/link", "/code",
+                "link code", "kode"):
             return
         conn = get_conn()
         i18n.set_ctx_for_user(message.author.id, conn)
@@ -138,12 +139,19 @@ class LinkCode(commands.Cog):
 
     @app_commands.command(
         name="linkcode",
-        description="Get a code to link your Discord character to Telegram")
+        description="Get your authentication code to link your Discord character to Telegram")
     async def linkcode(self, interaction: discord.Interaction):
+        # Defer FIRST (2026-11-05 fix for "application did not respond"):
+        # answering must happen within 3s, but translation (online lookup
+        # for non-Indonesian locales) can take longer, and a slow first
+        # reply used to surface as "did not respond" even when the bot
+        # was alive. A deferred interaction gives us up to 15 minutes.
+        await interaction.response.defer(
+            ephemeral=interaction.guild is not None)
         conn = get_conn()
         i18n.set_ctx(interaction, conn)
         if interaction.guild is not None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=err_embed(
                     "This command only works in a DM with me, because the "
                     "code is sensitive. DM me and run /linkcode there."),
@@ -151,14 +159,14 @@ class LinkCode(commands.Cog):
             return
         player = db.get_player(conn, interaction.user.id)
         if player is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=err_embed(
                     "You don't have a character yet! "
                     "Register first with `/register`."))
             return
         result = issue_link_code(conn, interaction.user.id)
         if result is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=err_embed(
                     "Your Discord character is already linked to Telegram. "
                     "If you want to link a different Telegram account, "
@@ -195,7 +203,7 @@ class LinkCode(commands.Cog):
                 "It is single-use and expires in 24 hours. "
                 "Do not share it with anyone else.",
                 code=code)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=emb(i18n.t("🔗 Telegram link code"), desc))
 
 
