@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# NEWR Adventure by NEWR LABS — credit marker, do not remove.
 """NEWR Adventure — Discord bot RPG (slash commands only).
 
 Credit by NEWR LABS. Bot ini sepenuhnya terpisah dari bot NEWR lainnya:
@@ -18,6 +19,8 @@ from discord.ext import commands
 
 BOT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BOT_DIR))
+
+import credit_guard  # noqa: E402 — marker-only check, no other code hash
 
 # Muat .env lokal (kalau ada) tanpa mencetak nilainya.
 try:
@@ -77,6 +80,9 @@ def _proxy_kwargs() -> dict:
 
 
 def main():
+    # Credit guard runs FIRST, before any token/network use. It checks
+    # credit markers only — any other code change passes it.
+    credit_guard.enforce_credit_markers(BOT_DIR)
     token = os.environ.get("DISCORD_TOKEN", "").strip().strip("\"'")
     if not token or token.startswith("<") or "YOUR_" in token or "EXAMPLE" in token:
         print(

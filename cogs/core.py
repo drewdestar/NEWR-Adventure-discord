@@ -94,6 +94,7 @@ class InventorySelect(discord.ui.Select):
 
     def __init__(self, owner_id, inv):
         self.owner_id = owner_id
+        self.inv = inv
         options = []
         for row in inv[:25]:
             desc = f"x{row['qty']}"
@@ -120,11 +121,23 @@ class InventorySelect(discord.ui.Select):
             bonus = f" (+{info['def']} DEF)"
         elif "heal" in info:
             bonus = f" (heal {info['heal']})"
+        hint = ""
+        if info["type"] == "seed":
+            hint = "\nSeeds are planted at /house."
+        elif info["type"] == "petgear":
+            hint = "\nPet gear is equipped with /petgear."
+        elif info["type"] in ("material", "rare"):
+            hint = "\nNo direct use — sell it to other players with /tradeboard sell."
+        equipped = any(r["item_id"] == item and r["equipped"] for r in self.inv)
+        view = ItemActionView(self.owner_id, item, equipped=equipped)
+        if not view.children:
+            view = None
+        else:
+            hint += "\nChoose an action below."
         e = emb(f"🎒 {disp.item(item)}",
-                'Type: {tipe}{bonus} • Shop price: {harga} gold. Choose an action below.'.format(tipe=info['type'], bonus=bonus, harga=info['price']),
+                'Type: {tipe}{bonus} • Shop price: {harga} gold.{hint}'.format(tipe=info['type'], bonus=bonus, harga=info['price'], hint=hint),
                 color=COLOR_CORE)
-        await interaction.response.edit_message(
-            embed=e, view=ItemActionView(self.owner_id, item))
+        await interaction.response.edit_message(embed=e, view=view)
 
 
 class InventoryView(discord.ui.View):
@@ -134,12 +147,25 @@ class InventoryView(discord.ui.View):
 
 
 class ItemActionView(discord.ui.View):
-    """Tombol Pakai / Pasang / Lepas buat satu item terpilih."""
+    """Tombol aksi buat satu item terpilih — hanya aksi yang masuk akal
+    buat tipe item itu (Use buat potion/food, Equip/Unequip buat
+    weapon/armor, tanpa tombol buat material/rare/seed/petgear)."""
 
-    def __init__(self, owner_id, item):
+    def __init__(self, owner_id, item, equipped=False):
         super().__init__(timeout=300)
         self.owner_id = owner_id
         self.item = item
+        tipe = ITEMS.get(item, {}).get("type")
+        keep = set()
+        if tipe in ("potion", "food"):
+            keep.add("use")
+        if tipe in ("weapon", "armor"):
+            keep.add("equip")
+            if equipped:
+                keep.add("unequip")
+        for child in list(self.children):
+            if isinstance(child, discord.ui.Button) and child.label.lower() not in keep:
+                self.remove_item(child)
 
     async def _act(self, interaction, fn, title):
         if interaction.user.id != self.owner_id:
@@ -155,7 +181,7 @@ class ItemActionView(discord.ui.View):
                 embed=err_embed("You don't have {item}.".format(item=disp.item(self.item))),
                 ephemeral=True)
             return
-        ok, text = fn(conn, p)
+        ok, text = fn(conn, p, self.item)
         if ok:
             await interaction.response.send_message(
                 embed=emb(title, text, color=COLOR_CORE), ephemeral=True)
@@ -424,7 +450,7 @@ class Core(commands.Cog):
                 lines.append(f"{disp.item(row['item_id'])} x{row['qty']}{mark}{dura}")
             await interaction.response.send_message(
                 embed=emb(f"🎒 {p['name']}'s Bag",
-                          "\n".join(lines) + "\n\n" + 'Choose an item below to use/equip.',
+                          "\n".join(lines) + "\n\n" + 'Choose an item below to see what you can do with it.',
                           color=COLOR_CORE),
                 view=InventoryView(p["user_id"], inv))
             return
@@ -432,7 +458,7 @@ class Core(commands.Cog):
             await interaction.response.send_message(
                 embed=err_embed('Tell me the item name first.'), ephemeral=True)
             return
-        item = item.lower()
+        item = disp.resolve_item(item) or item.lower()
         if item not in ITEMS:
             await interaction.response.send_message(
                 embed=err_embed("Item '{item}' is unknown. Check `/inventory list` first.".format(item=disp.item(item))),

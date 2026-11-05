@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# NEWR Adventure by NEWR LABS — credit marker, do not remove.
 """Data statis game RPG NEWR LABS.
 
 Semua angka sengaja sederhana dan konsisten. Kalau mau rebalance, ubah di sini

@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import database as db
+import display as disp
 import logic
 from data import CLASSES, ITEMS, PETS
 
@@ -264,6 +265,44 @@ def main():
           and logic.pvp_steal_amount(5) == 0)
     check("kalah potong 10% carried (clamp), bank aman",
           max(0, 150 // 10) == 15 and max(0, -50 // 10) == 0)
+
+    # 9. Phase 3: credit guard — marker-only, no other code hashed
+    import credit_guard
+    check("credit guard lolos di repo asli",
+          credit_guard.verify_credit_markers() == [])
+    tmpdir = Path(tempfile.mkdtemp())
+    (tmpdir / "bot.py").write_text("# no marker here\n")
+    (tmpdir / "data.py").write_text("")
+    (tmpdir / "database.py").write_text("")
+    (tmpdir / "cogs").mkdir(exist_ok=True)
+    (tmpdir / "cogs" / "common.py").write_text("")
+    problems = credit_guard.verify_credit_markers(tmpdir)
+    check("credit guard gagal kalau marker hilang",
+          len(problems) >= 5)  # 4 file + LICENSE
+    (tmpdir / "bot.py").write_text(
+        "# NEWR Adventure by NEWR LABS \u2014 credit marker, do not remove.\n")
+    (tmpdir / "data.py").write_text(
+        "# NEWR Adventure by NEWR LABS \u2014 credit marker, do not remove.\n")
+    (tmpdir / "database.py").write_text(
+        "# NEWR Adventure by NEWR LABS \u2014 credit marker, do not remove.\n")
+    (tmpdir / "cogs" / "common.py").write_text(
+        "# NEWR Adventure by NEWR LABS \u2014 credit marker, do not remove.\n")
+    (tmpdir / "LICENSE").write_text(
+        "Copyright NEWR LABS. No use without written permission.\n")
+    check("credit guard lolos kalau marker utuh (kode lain bebas diubah)",
+          credit_guard.verify_credit_markers(tmpdir) == [])
+
+    check("harga black market 1.5x (dragon egg 5000 -> 7500)",
+          logic.bm_price("telur naga") == 7500)
+    check("clamp jumlah: 0->1, lewat stok->stok, stok 0->0",
+          logic.bm_clamp_qty(0, 2) == 1 and logic.bm_clamp_qty(9, 2) == 2
+          and logic.bm_clamp_qty(1, 0) == 0)
+    check("total keranjang: 2x dragon egg = 15000",
+          logic.bm_cart_total({"telur naga": 2}) == 15000)
+    check("resolve nama Inggris 'dragon egg' -> 'telur naga'",
+          disp.resolve_item("dragon egg") == "telur naga")
+    check("resolve nama Indonesia 'telur naga' tetap",
+          disp.resolve_item("telur naga") == "telur naga")
 
     conn.close()
     os.unlink(tmp.name)

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# NEWR Adventure by NEWR LABS — credit marker, do not remove.
 """Lapisan database SQLite untuk bot RPG.
 
 Satu file database (rpg.db). Semua fungsi menerima path database supaya

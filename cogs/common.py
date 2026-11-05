@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# NEWR Adventure by NEWR LABS — credit marker, do not remove.
 """Helper bersama untuk semua cog: embed, database, quest, reward."""
 import os
 from pathlib import Path

@@ -319,3 +319,20 @@ def casino_limits_ok(player, bet):
     if player["casino_lost"] + bet > 2000:
         return False, "Your daily loss limit (2000 gold) is almost reached, take a break."
     return True, ""
+
+
+def bm_price(item_id):
+    """Harga Black Market: 1.5x harga toko, dibulatkan ke bawah."""
+    return int(ITEMS[item_id]["price"] * 1.5)
+
+
+def bm_clamp_qty(qty, stock):
+    """Jumlah beli yang valid: 1..stock (0 kalau stok habis)."""
+    if stock <= 0:
+        return 0
+    return max(1, min(qty, stock))
+
+
+def bm_cart_total(cart):
+    """Total gold keranjang {item_id: qty} di harga Black Market."""
+    return sum(bm_price(it) * q for it, q in cart.items())

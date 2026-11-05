@@ -109,6 +109,222 @@ class TradeView(discord.ui.View):
             embed=emb('🔄 Trade', text, color=COLOR_ECONOMY), view=self)
 
 
+def ensure_bm_stock(conn):
+    """Stok Black Market hari ini, dibuat dulu kalau belum ada (3 item acak)."""
+    today = logic.today_wib()
+    rows = conn.execute(
+        "SELECT * FROM bm_stock WHERE date = ?", (today,)).fetchall()
+    if not rows:
+        rng = random.Random(today)
+        picks = rng.sample(BLACKMARKET_POOL, 3)
+        for it in picks:
+            conn.execute(
+                "INSERT INTO bm_stock (date, item_id, qty_left) VALUES (?, ?, 2)",
+                (today, it))
+        conn.commit()
+        rows = conn.execute(
+            "SELECT * FROM bm_stock WHERE date = ?", (today,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+# Keranjang Black Market per pemain, di memori saja (seperti state fight:
+# hilang kalau bot restart, stok baru dikurangi pas checkout, bukan pas
+# masuk keranjang).
+BM_CARTS = {}
+
+
+def bm_cart_embed(owner_id):
+    """Embed isi keranjang + total, dipakai ulang view keranjang."""
+    cart = BM_CARTS.get(owner_id, {})
+    if not cart:
+        return emb('🛒 Your Cart',
+                   'Your cart is empty. Tap Buy on the Black Market list to add items.',
+                   color=COLOR_ECONOMY)
+    lines = [f"{disp.item(it)} x{q} — {logic.bm_price(it) * q} gold"
+             for it, q in cart.items()]
+    lines.append(f"\nTotal: {logic.bm_cart_total(cart)} gold")
+    return emb('🛒 Your Cart', "\n".join(lines), color=COLOR_ECONOMY)
+
+
+class BMCartView(discord.ui.View):
+    """Checkout / kosongkan keranjang Black Market."""
+
+    def __init__(self, owner_id):
+        super().__init__(timeout=300)
+        self.owner_id = owner_id
+        checkout = discord.ui.Button(label="Checkout", style=discord.ButtonStyle.success, emoji="💰")
+        checkout.callback = self._checkout
+        clear = discord.ui.Button(label="Clear cart", style=discord.ButtonStyle.danger)
+        clear.callback = self._clear
+        self.add_item(checkout)
+        self.add_item(clear)
+
+    async def _owner_ok(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                embed=err_embed("That's someone else's cart! Run `/blackmarket list` for your own."),
+                ephemeral=True)
+            return False
+        return True
+
+    async def _checkout(self, interaction):
+        if not await self._owner_ok(interaction):
+            return
+        conn = get_conn()
+        p = await need_player(interaction, conn)
+        if not p:
+            return
+        cart = BM_CARTS.get(self.owner_id, {})
+        if not cart:
+            await interaction.response.send_message(
+                embed=err_embed('Your cart is empty.'), ephemeral=True)
+            return
+        stock = {r["item_id"]: r["qty_left"] for r in ensure_bm_stock(conn)}
+        problems = []
+        for it, q in cart.items():
+            if stock.get(it, 0) < q:
+                problems.append(f"{disp.item(it)}: only {stock.get(it, 0)} left in stock")
+        total = logic.bm_cart_total(cart)
+        if p["gold"] < total:
+            problems.append(f"Not enough gold! Need {total}, you have {p['gold']}")
+        if problems:
+            await interaction.response.send_message(
+                embed=err_embed("Checkout failed:\n" + "\n".join(problems) + "\nYour cart is kept."),
+                ephemeral=True)
+            return
+        p["gold"] -= total
+        db.save_player(conn, p)
+        for it, q in cart.items():
+            db.add_item(conn, p["user_id"], it, q)
+            conn.execute(
+                "UPDATE bm_stock SET qty_left = qty_left - ? WHERE date = ? AND item_id = ?",
+                (q, logic.today_wib(), it))
+        conn.commit()
+        BM_CARTS[self.owner_id] = {}
+        bought = ", ".join(f"{disp.item(it)} x{q}" for it, q in cart.items())
+        await interaction.response.edit_message(
+            embed=emb('🕶️ Black Market',
+                      f"Shady deal done: {bought} for {total} gold. Gold left: {p['gold']}.",
+                      color=COLOR_ECONOMY),
+            view=None)
+
+    async def _clear(self, interaction):
+        if not await self._owner_ok(interaction):
+            return
+        BM_CARTS[self.owner_id] = {}
+        await interaction.response.edit_message(embed=bm_cart_embed(self.owner_id), view=self)
+
+
+class BMQtyView(discord.ui.View):
+    """Pilih jumlah buat satu item Black Market, lalu masuk keranjang."""
+
+    def __init__(self, owner_id, item_id, stock):
+        super().__init__(timeout=300)
+        self.owner_id = owner_id
+        self.item_id = item_id
+        self.stock = stock
+        self.qty = 1
+        self.minus = discord.ui.Button(label="−", style=discord.ButtonStyle.secondary)
+        self.minus.callback = self._minus
+        self.qty_btn = discord.ui.Button(label="x1", style=discord.ButtonStyle.primary, disabled=True)
+        self.plus = discord.ui.Button(label="+", style=discord.ButtonStyle.secondary)
+        self.plus.callback = self._plus
+        self.add_btn = discord.ui.Button(label="Add to cart", style=discord.ButtonStyle.success, emoji="🛒")
+        self.add_btn.callback = self._add
+        for b in (self.minus, self.qty_btn, self.plus, self.add_btn):
+            self.add_item(b)
+        self._sync()
+
+    def _sync(self):
+        self.qty_btn.label = f"x{self.qty}"
+        self.minus.disabled = self.qty <= 1
+        self.plus.disabled = self.qty >= self.stock
+
+    def _embed(self):
+        price = logic.bm_price(self.item_id)
+        return emb('🕶️ Black Market',
+                   f"{disp.item(self.item_id)} — {price} gold each (stock {self.stock}).\n"
+                   f"Buying x{self.qty} = {price * self.qty} gold.",
+                   color=COLOR_ECONOMY)
+
+    async def _owner_ok(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                embed=err_embed("That's someone else's market! Run `/blackmarket list` for your own."),
+                ephemeral=True)
+            return False
+        return True
+
+    async def _minus(self, interaction):
+        if not await self._owner_ok(interaction):
+            return
+        self.qty = logic.bm_clamp_qty(self.qty - 1, self.stock)
+        self._sync()
+        await interaction.response.edit_message(embed=self._embed(), view=self)
+
+    async def _plus(self, interaction):
+        if not await self._owner_ok(interaction):
+            return
+        self.qty = logic.bm_clamp_qty(self.qty + 1, self.stock)
+        self._sync()
+        await interaction.response.edit_message(embed=self._embed(), view=self)
+
+    async def _add(self, interaction):
+        if not await self._owner_ok(interaction):
+            return
+        cart = BM_CARTS.setdefault(self.owner_id, {})
+        cart[self.item_id] = logic.bm_clamp_qty(
+            cart.get(self.item_id, 0) + self.qty, self.stock)
+        await interaction.response.edit_message(
+            embed=bm_cart_embed(self.owner_id), view=BMCartView(self.owner_id))
+
+
+class BlackMarketView(discord.ui.View):
+    """Daftar Black Market gaya kolom inventory: satu tombol Buy per item
+    + tombol keranjang. Hanya pemilik daftar yang bisa klik tombolnya."""
+
+    def __init__(self, owner_id, stock_rows):
+        super().__init__(timeout=300)
+        self.owner_id = owner_id
+        for row in stock_rows:
+            btn = discord.ui.Button(
+                label=f"Buy {disp.item(row['item_id'])}"[:80],
+                style=discord.ButtonStyle.primary, emoji="🕶️")
+
+            async def _buy(interaction, item_id=row["item_id"]):
+                if interaction.user.id != self.owner_id:
+                    await interaction.response.send_message(
+                        embed=err_embed("That's someone else's market! Run `/blackmarket list` for your own."),
+                        ephemeral=True)
+                    return
+                conn = get_conn()
+                stock = {r["item_id"]: r["qty_left"] for r in ensure_bm_stock(conn)}
+                left = stock.get(item_id, 0)
+                if left <= 0:
+                    await interaction.response.send_message(
+                        embed=err_embed(f"{disp.item(item_id)} is out of stock today."),
+                        ephemeral=True)
+                    return
+                view = BMQtyView(self.owner_id, item_id, left)
+                await interaction.response.send_message(
+                    embed=view._embed(), view=view, ephemeral=True)
+
+            btn.callback = _buy
+            self.add_item(btn)
+        cart_btn = discord.ui.Button(label="Cart", style=discord.ButtonStyle.secondary, emoji="🛒")
+        cart_btn.callback = self._cart
+        self.add_item(cart_btn)
+
+    async def _cart(self, interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                embed=err_embed("That's someone else's cart! Run `/blackmarket list` for your own."),
+                ephemeral=True)
+            return
+        await interaction.response.send_message(
+            embed=bm_cart_embed(self.owner_id), view=BMCartView(self.owner_id), ephemeral=True)
+
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -156,29 +372,16 @@ class Economy(commands.Cog):
                       color=COLOR_ECONOMY))
 
     def _bm_today(self, conn):
-        today = logic.today_wib()
-        rows = conn.execute(
-            "SELECT * FROM bm_stock WHERE date = ?", (today,)).fetchall()
-        if not rows:
-            rng = random.Random(today)
-            picks = rng.sample(BLACKMARKET_POOL, 3)
-            for it in picks:
-                conn.execute(
-                    "INSERT INTO bm_stock (date, item_id, qty_left) VALUES (?, ?, 2)",
-                    (today, it))
-            conn.commit()
-            rows = conn.execute(
-                "SELECT * FROM bm_stock WHERE date = ?", (today,)).fetchall()
-        return [dict(r) for r in rows]
+        return ensure_bm_stock(conn)
 
     @app_commands.command(name="blackmarket", description="Rare & forbidden items, limited daily stock")
-    @app_commands.describe(aksi="list/buy", item="Item name")
+    @app_commands.describe(aksi="list/buy", item="Item name", jumlah="Amount (for buy)")
     @app_commands.choices(aksi=[
         app_commands.Choice(name="list", value="list"),
         app_commands.Choice(name="buy", value="buy"),
     ])
-    @app_commands.rename(aksi="action")
-    async def blackmarket(self, interaction: discord.Interaction, aksi: str, item: str = ""):
+    @app_commands.rename(aksi="action", jumlah="amount")
+    async def blackmarket(self, interaction: discord.Interaction, aksi: str, item: str = "", jumlah: int = 1):
         conn = get_conn()
         p = await need_player(interaction, conn)
         if not p:
@@ -187,34 +390,37 @@ class Economy(commands.Cog):
         if aksi == "list":
             lines = []
             for s in stock:
-                price = int(ITEMS[s["item_id"]]["price"] * 1.5)
+                price = logic.bm_price(s["item_id"])
                 lines.append(f"{disp.item(s['item_id'])} — {price} gold (stock {s['qty_left']})")
             await interaction.response.send_message(embed=emb('🕶️ Black Market (resets daily)',
-                "\n".join(lines) + "\n\n" + "Psst... don't tell anyone, ok.",
-                color=COLOR_ECONOMY))
+                "\n".join(lines) + "\n\n" + "Tap Buy under an item to pick a quantity and add it to your cart, then check out from 🛒 Cart.\nPsst... don't tell anyone, ok.",
+                color=COLOR_ECONOMY),
+                view=BlackMarketView(interaction.user.id, stock))
             return
         item = disp.resolve_item(item) or item.lower()
+        jumlah = max(1, jumlah)
         row = next((s for s in stock if s["item_id"] == item), None)
-        if not row or row["qty_left"] <= 0:
+        if not row or row["qty_left"] < jumlah:
             await interaction.response.send_message(
-                embed=err_embed("That item doesn't exist / is out of stock today."),
+                embed=err_embed("That item doesn't exist / not enough stock today (left: {left}).".format(left=row["qty_left"] if row else 0)),
                 ephemeral=True)
             return
-        price = int(ITEMS[item]["price"] * 1.5)
-        if p["gold"] < price:
+        price = logic.bm_price(item)
+        total = price * jumlah
+        if p["gold"] < total:
             await interaction.response.send_message(
-                embed=err_embed('Not enough gold! Need {price}.'.format(price=price)), ephemeral=True)
+                embed=err_embed('Not enough gold! Need {total}, you have {gold}.'.format(total=total, gold=p['gold'])), ephemeral=True)
             return
-        p["gold"] -= price
+        p["gold"] -= total
         db.save_player(conn, p)
-        db.add_item(conn, p["user_id"], item, 1)
+        db.add_item(conn, p["user_id"], item, jumlah)
         conn.execute(
-            "UPDATE bm_stock SET qty_left = qty_left - 1 WHERE date = ? AND item_id = ?",
-            (logic.today_wib(), item))
+            "UPDATE bm_stock SET qty_left = qty_left - ? WHERE date = ? AND item_id = ?",
+            (jumlah, logic.today_wib(), item))
         conn.commit()
         await interaction.response.send_message(
             embed=emb("🕶️ Black Market",
-                      'Shady deal done: {item} for {price} gold. Gold left: {gold}.'.format(item=disp.item(item), price=price, gold=p['gold']),
+                      'Shady deal done: {item} x{qty} for {total} gold. Gold left: {gold}.'.format(item=disp.item(item), qty=jumlah, total=total, gold=p['gold']),
                       color=COLOR_ECONOMY))
 
     @app_commands.command(name="craft", description="Combine items into stronger weapons/armor")
