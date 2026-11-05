@@ -70,6 +70,30 @@ ITEM_EN = {
     "topi labu": "Pumpkin Hat",
     "tongkat permen": "Candy Staff",
     "lonceng tahun baru": "New Year Bell",
+    "tongkat suci": "Holy Staff",
+    "kapak kayu": "Wooden Axe",
+    "kitab roh": "Spirit Tome",
+    "seruling kayu": "Wooden Flute",
+    "katana kayu": "Wooden Katana",
+    "tongkat alam": "Nature Staff",
+    "pedang es": "Ice Sword",
+    "tombak petir": "Lightning Spear",
+    "pedang void": "Void Sword",
+    "busur bulan": "Moon Bow",
+    "armor salju": "Snow Armor",
+    "armor void": "Void Armor",
+    "jubah penyihir": "Wizard Robe",
+    "zirah druid": "Druid Armor",
+    "potion sedang": "Medium Potion",
+    "sup jamur": "Mushroom Soup",
+    "sup hangat": "Warm Soup",
+    "roti gandum": "Wheat Bread",
+    "sisik es": "Ice Scale",
+    "bulu salju": "Snow Feather",
+    "pasir void": "Void Sand",
+    "racun ular": "Snake Venom",
+    "cangkang karang": "Coral Shell",
+    "bulu kupu": "Butterfly Wing",
 }
 
 PET_EN = {
@@ -77,6 +101,12 @@ PET_EN = {
     "Kucing Bayangan": "Shadow Cat",
     "Naga Mini": "Mini Dragon",
     "Kelinci Bulan": "Moon Rabbit",
+    "Rubah Es": "Ice Fox",
+    "Burung Guntur": "Thunder Bird",
+    "Kura-kura Karang": "Coral Turtle",
+    "Lebah Madu": "Honey Bee",
+    "Harimau Gurun": "Desert Tiger",
+    "Roh Void": "Void Spirit",
 }
 
 PET_SKILL_EN = {
@@ -84,6 +114,12 @@ PET_SKILL_EN = {
     "Cakaran Senyap": "Silent Claw",
     "Napas Api Kecil": "Small Fire Breath",
     "Tendangan Lunar": "Lunar Kick",
+    "Gigitan Beku": "Freezing Bite",
+    "Sambar Petir": "Lightning Strike",
+    "Hantaman Karang": "Coral Slam",
+    "Sengatan Manis": "Sweet Sting",
+    "Cakaran Pasir": "Sand Claw",
+    "Sentuhan Void": "Void Touch",
 }
 
 PET_FORM_EN = {
@@ -99,6 +135,24 @@ PET_FORM_EN = {
     "Kelinci Kecil": "Little Rabbit",
     "Kelinci Bulan": "Moon Rabbit",
     "Kelinci Dewa Bulan": "Moon God Rabbit",
+    "Anak Rubah Es": "Ice Fox Pup",
+    "Rubah Es": "Ice Fox",
+    "Rubah Badai Es": "Ice Storm Fox",
+    "Anak Burung Guntur": "Thunder Chick",
+    "Burung Guntur": "Thunder Bird",
+    "Burung Badai": "Storm Bird",
+    "Tukik Karang": "Coral Hatchling",
+    "Kura-kura Karang": "Coral Turtle",
+    "Kura-kura Purba": "Ancient Turtle",
+    "Lebah Kecil": "Little Bee",
+    "Lebah Madu": "Honey Bee",
+    "Ratu Lebah": "Bee Queen",
+    "Anak Harimau Gurun": "Desert Tiger Cub",
+    "Harimau Gurun": "Desert Tiger",
+    "Harimau Badai Pasir": "Sandstorm Tiger",
+    "Wisp Void": "Void Wisp",
+    "Roh Void": "Void Spirit",
+    "Roh Void Agung": "Grand Void Spirit",
 }
 
 AREA_EN = {
@@ -107,6 +161,12 @@ AREA_EN = {
     "Gunung Berapi": "Volcano Mountain",
     "Kastil Kegelapan": "Dark Castle",
     "Langit Terlarang": "Forbidden Sky",
+    "Desa Tenang": "Quiet Village",
+    "Pantai Karang": "Coral Beach",
+    "Hutan Beracun": "Poison Forest",
+    "Gurun Pasir": "Sand Desert",
+    "Pegunungan Salju": "Snow Mountains",
+    "Menara Void": "Void Tower",
 }
 
 MONSTER_EN = {
@@ -130,6 +190,28 @@ MONSTER_EN = {
     "Rusa Kutub Jahat": "Evil Reindeer",
     "Kembang Api Hidup": "Living Firework",
     "Raja Iblis": "Demon King",
+    "Raja Ombak": "Wave King",
+    "Dewi Panen": "Harvest Goddess",
+    "Raja Void": "Void King",
+    "Ratu Salju": "Snow Queen",
+    "Ayam Liar": "Wild Chicken",
+    "Tikus Ladang": "Field Mouse",
+    "Kupu-kupu Raksasa": "Giant Butterfly",
+    "Kepiting Raksasa": "Giant Crab",
+    "Ubur-ubur Listrik": "Electric Jellyfish",
+    "Penyu Karang": "Coral Turtle",
+    "Jamur Beracun": "Poison Mushroom",
+    "Ular Berbisa": "Venomous Snake",
+    "Katak Racun": "Poison Frog",
+    "Kalajengking Pasir": "Sand Scorpion",
+    "Mumi Kuno": "Ancient Mummy",
+    "Cacing Gurun": "Desert Worm",
+    "Serigala Salju": "Snow Wolf",
+    "Yeti Muda": "Young Yeti",
+    "Roh Es": "Ice Spirit",
+    "Mata Void": "Void Eye",
+    "Bayangan Void": "Void Shadow",
+    "Naga Void": "Void Dragon",
 }
 
 QUEST_EN = {
@@ -142,6 +224,16 @@ QUEST_EN = {
     "sq3": ("Hard Worker", "Finish 5 jobs."),
     "dq1": ("Daily: Hunt", "Defeat 2 monsters today."),
     "dq2": ("Daily: Work", "Work 1 time today."),
+    "mq5": ("New World Explorer", "Defeat 40 monsters in total."),
+    "mq6": ("NEWR Legend", "Reach level 30."),
+    "sq4": ("Duelist", "Win 10 PvP duels."),
+    "sq5": ("Gold Tycoon", "Collect 10000 gold in total from all sources."),
+    "sq6": ("Skilled Crafter", "Craft 10 items."),
+    "sq7": ("Legendary Worker", "Finish 20 jobs."),
+    "sq8": ("Monster Hunter", "Defeat 100 monsters in total."),
+    "sq9": ("Master Adventurer", "Reach level 40."),
+    "dq3": ("Daily: Heavy Hunt", "Defeat 5 monsters today."),
+    "dq4": ("Daily: Hard Work", "Work 3 times today."),
 }
 
 SKILL_EN = {
@@ -149,12 +241,21 @@ SKILL_EN = {
     "Ledakan Api": "Fire Blast",
     "Panah Beruntun": "Arrow Barrage",
     "Tusukan Bayangan": "Shadow Stab",
+    "Cahaya Suci": "Holy Light",
+    "Amukan Liar": "Wild Rampage",
+    "Panggil Roh": "Spirit Summon",
+    "Lagu Perang": "War Song",
+    "Tebasan Kilat": "Lightning Slash",
+    "Akar Berduri": "Thorn Roots",
 }
 
 JOB_EN = {
     "tukang kayu": "Carpenter",
     "penambang": "Miner",
     "pemburu": "Hunter",
+    "nelayan": "Fisher",
+    "petani": "Farmer",
+    "penjaga salju": "Snow Guard",
 }
 
 CROP_EN = {
@@ -178,6 +279,12 @@ EVENT_EN = {
     "Tahun Baru": ("New Year",
                    "The sky celebrates! The Living Firework boss appears in raids.",
                    "Living Firework"),
+    "Festival Musim Panas": ("Summer Festival",
+                   "Waves rage! The Wave King boss appears in raids.",
+                   "Wave King"),
+    "Festival Panen": ("Harvest Festival",
+                   "Harvest time! The Harvest Goddess boss appears in raids.",
+                   "Harvest Goddess"),
 }
 
 STORY_EN = {
@@ -197,6 +304,15 @@ STORY_EN = {
     5: ("Forbidden Sky",
         "The Sky Dragon takes you to the Forbidden Sky, where the final truth "
         "is kept. Are you ready to face your destiny?"),
+    6: ("Void Tower",
+        "A black tower rises from the void. The Void King waits at its top — "
+        "and your lost memories are kept there."),
+    7: ("Snow Queen",
+        "The Snow Mountains freeze colder than ever. The Snow Queen guards "
+        "the final key to your destiny."),
+    8: ("Final Destiny",
+        "Every memory returns. You are not just an adventurer — you are the "
+        "guardian of the NEWR world. This story is only the beginning."),
 }
 
 RIDDLE_EN = {
@@ -211,6 +327,16 @@ RIDDLE_EN = {
         "Who am I? (answer: map)",
     "Urutan berikutnya: 2, 6, 12, 20, 30, ...? (jawab angka saja)":
         "What comes next: 2, 6, 12, 20, 30, ...? (answer with a number only)",
+    "Aku selalu di depanmu tapi tak pernah bisa kau sentuh. Siapakah aku? (jawab: bayangan)":
+        "I am always in front of you but you can never touch me. Who am I? (answer: shadow)",
+    "Aku mengulang semua yang kau katakan, tapi aku bukan dirimu. Siapakah aku? (jawab: gema)":
+        "I repeat everything you say, but I am not you. Who am I? (answer: echo)",
+    "Berapa hasil 12 x 12 - 44? (jawab angka saja)":
+        "What is 12 x 12 - 44? (answer with a number only)",
+    "Apa yang naik tapi tidak pernah turun? (jawab: usia)":
+        "What goes up but never comes down? (answer: age)",
+    "Benda apa yang punya jarum tapi tidak bisa menjahit? (jawab: jam)":
+        "What has hands but cannot sew? (answer: clock)",
 }
 
 # Jawaban teka-teki tetap memakai key Indonesia di data; jawaban English ini
@@ -219,6 +345,10 @@ RIDDLE_ANSWER_EN = {
     "angin": "wind",
     "lubang": "hole",
     "peta": "map",
+    "bayangan": "shadow",
+    "gema": "echo",
+    "usia": "age",
+    "jam": "clock",
 }
 
 

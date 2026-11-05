@@ -25,6 +25,8 @@ import discord
 
 import database as db
 import friends_db
+from data import CLASSES as DATA_CLASSES
+from data import CONTENT_TIERS, QUESTS
 
 log = logging.getLogger("rpg.rolesync")
 
@@ -34,7 +36,10 @@ SEASON_1_START = 1793811600
 # Level roles are milestones only, never one role per level.
 LEVEL_MILESTONES = [10, 15, 25, 35, 50]
 
-CLASSES = ["Warrior", "Mage", "Archer", "Assassin"]
+# Class roles come from data.CLASSES, so adding a playable class in
+# data.py automatically adds its Discord role here (no role is deleted:
+# _managed_names only grows, and removal only touches managed names).
+CLASSES = list(DATA_CLASSES)
 STARTER_TIERS = ["Common", "Rare", "Epic", "Legendary"]
 # NOTE: there is NO SSS tier in the game today. These are the only tier
 # roles; an SSS tier would be a separate game-design change.
@@ -155,10 +160,23 @@ def player_achievements(conn, user_id):
 
 
 # ------------------------------------------------------------ role mapping
+def _claimed_quest_tiers(conn, user_id):
+    """Content tiers of quests this player has claimed (any kind)."""
+    tiers = set()
+    for row in conn.execute(
+            "SELECT quest_id FROM quests_progress "
+            "WHERE user_id = ? AND claimed = 1", (user_id,)):
+        q = QUESTS.get(row[0])
+        if q:
+            tiers.add(q.get("tier", "Common"))
+    return tiers
+
+
 def _managed_names(conn):
     """Every role name this sync is allowed to add or remove."""
     names = set(CLASSES)
     names.update(f"Tier {t}" for t in STARTER_TIERS)
+    names.update(f"Quest Tier {t}" for t in CONTENT_TIERS)
     names.update(f"Level {m}" for m in LEVEL_MILESTONES)
     names.update(["Guild Leader", "Guild Member"])
     names.update(ACHIEVEMENT_NAMES)
@@ -181,6 +199,8 @@ def desired_roles(conn, player, top10=None):
         out.add(player["class"])
     if player.get("starter_tier"):
         out.add(f"Tier {player['starter_tier']}")
+    for tier in _claimed_quest_tiers(conn, player["user_id"]):
+        out.add(f"Quest Tier {tier}")
     out.add(season_role_name(season_for_ts(conn, player.get("created_at") or 0)))
     reached = [m for m in LEVEL_MILESTONES if player["level"] >= m]
     if reached:

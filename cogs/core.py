@@ -15,7 +15,8 @@ import hospital_db
 import i18n
 import logic
 import rolesync
-from data import AREAS, CLASSES, EVOLUTIONS, ITEMS, MONSTERS, QUESTS
+from data import (AREAS, CLASSES, EVOLUTIONS, ITEMS, MONSTERS, QUESTS,
+                REGISTER_PROLOGUE, REGISTER_STORIES)
 from .common import (COLOR_CORE, bar_line, bump_daily, emb, err_embed,
                      get_conn, guild_buff_text, guild_level_of,
                      load_player, need_player, reward, sync_quests, warnings_for)
@@ -25,6 +26,12 @@ STARTER_WEAPON = {
     "Mage": "tongkat kayu",
     "Archer": "busur kayu",
     "Assassin": "belati kayu",
+    "Cleric": "tongkat suci",
+    "Berserker": "kapak kayu",
+    "Summoner": "kitab roh",
+    "Bard": "seruling kayu",
+    "Samurai": "katana kayu",
+    "Druid": "tongkat alam",
 }
 
 
@@ -215,6 +222,12 @@ class Core(commands.Cog):
         app_commands.Choice(name="Mage", value="Mage"),
         app_commands.Choice(name="Archer", value="Archer"),
         app_commands.Choice(name="Assassin", value="Assassin"),
+        app_commands.Choice(name="Cleric", value="Cleric"),
+        app_commands.Choice(name="Berserker", value="Berserker"),
+        app_commands.Choice(name="Summoner", value="Summoner"),
+        app_commands.Choice(name="Bard", value="Bard"),
+        app_commands.Choice(name="Samurai", value="Samurai"),
+        app_commands.Choice(name="Druid", value="Druid"),
     ])
     async def register(self, interaction: discord.Interaction, name: str, cls: str):
         conn = get_conn()
@@ -249,6 +262,12 @@ class Core(commands.Cog):
             for item, qty in merged.items())
         e = emb("🎮 Character Created!",
                 "\n".join([
+                    # Story first: every new registration opens with the
+                    # prologue + a class-specific opening line, before the
+                    # starter-roll result below. Existing players never
+                    # see it (register rejects them above).
+                    f"📖 {REGISTER_PROLOGUE}",
+                    f"_{REGISTER_STORIES[cls]}_",
                     i18n.t("Welcome, **{name}** the {cls}!").format(name=p["name"], cls=cls),
                     i18n.t("Starter tier: **{tier}** (+{pct}% stats)").format(tier=tier, pct=pct),
                     i18n.t("Starting skill: **{skill}**").format(skill=disp.skill(stats["skill"])),
@@ -520,7 +539,7 @@ class Core(commands.Cog):
             for name, info in AREAS.items():
                 lock = "🔓" if p["level"] >= info["min_level"] else '🔒 (requires Lv {n})'.format(n=info['min_level'])
                 mons = ', '.join(disp.monster(m) for m in info['monsters'])
-                lines.append(f"{lock} **{disp.area(name)}** — monsters: {mons}")
+                lines.append(f"{lock} **{disp.area(name)}** — {info.get('tier', 'Common')} Tier — monsters: {mons}")
             await interaction.response.send_message(
                 embed=emb('🗺️ World Map', "\n".join(lines), color=COLOR_CORE))
             return
@@ -609,7 +628,7 @@ class Core(commands.Cog):
                 prog = row["progress"] if row else 0
                 claimed = row["claimed"] if row else 0
                 status = '✅ claimed' if claimed else ('🎁 ready to claim!' if prog >= q["target"] else f"{prog}/{q['target']}")
-                lines.append('**[{qid}] {name}** ({kind}) — {desc} — {status} — reward {gold} gold + {exp} EXP'.format(qid=qid, name=disp.quest_name(qid), kind=q['kind'], desc=disp.quest_desc(qid), status=status, gold=q['gold'], exp=q['exp']))
+                lines.append('**[{qid}] {name}** ({tier} Tier, {kind}) — {desc} — {status} — reward {gold} gold + {exp} EXP'.format(qid=qid, name=disp.quest_name(qid), tier=q.get('tier', 'Common'), kind=q['kind'], desc=disp.quest_desc(qid), status=status, gold=q['gold'], exp=q['exp']))
             await interaction.response.send_message(
                 embed=emb('📜 Quests', "\n".join(lines), color=COLOR_CORE))
             return
@@ -643,7 +662,7 @@ class Core(commands.Cog):
     @app_commands.command(name="help", description="List all RPG bot commands")
     async def help_cmd(self, interaction: discord.Interaction):
         i18n.set_ctx(interaction, get_conn())
-        e = emb('📖 NEWR Adventure Help','All commands here are slash commands.\n\n**Basics:** `/register` `/profile` `/evolve` `/daily` `/inventory` `/map` `/quest`\n**Battle:** `/fight` `/raid` `/pvp` `/arena` `/guildwar`\n**Economy:** `/shop` `/blackmarket` `/craft` `/gacha` `/trade` `/tradeboard`\n**Pet:** `/pet` `/petgear`\n**Survival:** `/status` `/eat` `/drink` `/repair`\n**Social:** `/guild` `/guildquest` `/guildbuff` `/party`\n**Premium & Event:** `/vip` `/vipgrant` `/ranking` `/event`\n**Fun & Games:** `/casino` `/job` `/house` `/dungeon` `/meteor` `/story`\n\nStart with `/register`, claim `/daily`, then `/fight` to level up!\nNEWR Adventure by NEWR LABS',
+        e = emb('📖 NEWR Adventure Help','All commands here are slash commands.\n\n**Basics:** `/register` `/profile` `/evolve` `/daily` `/inventory` `/map` `/quest`\n**Battle:** `/fight` `/raid` `/pvp` `/arena` `/guildwar`\n**Economy:** `/shop` `/blackmarket` `/craft` `/gacha` `/trade` `/tradeboard`\n**Pet:** `/pet` `/petgear`\n**Survival:** `/status` `/eat` `/drink` `/repair`\n**Social:** `/guild` `/guildquest` `/guildbuff` `/party`\n**Premium & Event:** `/vip` `/vipgrant` `/ranking` `/event`\n**Fun & Games:** `/casino` `/job` `/house` `/dungeon` `/meteor` `/story`\n\nStart with `/register`, claim `/daily`, then `/fight` to level up!\nEvery registration begins with your hero story. Content is tiered — Common, Rare, Epic, Legendary — from areas and monsters to quests and bosses.\nNEWR Adventure by NEWR LABS',
                 color=COLOR_CORE)
         await interaction.response.send_message(embed=e)
 

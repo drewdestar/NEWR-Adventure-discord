@@ -118,7 +118,7 @@ class Premium(commands.Cog):
     async def event(self, interaction: discord.Interaction):
         events = logic.active_events()
         if not events:
-            await interaction.response.send_message(embed=emb('🎉 Seasonal Event','No seasonal event is active right now.\nEvents: **Halloween** (20-31 Oct), **Christmas** (20-26 Dec), **New Year** (30 Dec-2 Jan).\nDuring an active event, the shop gets special stock and event bosses appear in `/raid`.',
+            await interaction.response.send_message(embed=emb('🎉 Seasonal Event','No seasonal event is active right now.\nEvents: **Halloween** (20-31 Oct), **Christmas** (20-26 Dec), **New Year** (30 Dec-2 Jan), **Summer Festival** (1-31 Jul), **Harvest Festival** (1-30 Sep). Weekly raid bosses rotate: Demon King, Void King, Snow Queen.\nDuring an active event, the shop gets special stock and event bosses appear in `/raid`.',
                 color=COLOR_PREMIUM))
             return
         lines = []

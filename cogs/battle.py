@@ -15,7 +15,7 @@ import hospital_db
 import info_db
 import logic
 import rolesync
-from data import AREAS, ITEMS, WEEKLY_BOSS
+from data import AREAS, ITEMS, WEEKLY_BOSS, WEEKLY_BOSSES
 from .common import (COLOR_BATTLE, add_guild_exp, bar_line, bump_daily, emb,
                      err_embed, get_conn, guild_level_of, load_player,
                      need_player, reward, sync_quests)
@@ -533,7 +533,10 @@ class Battle(commands.Cog):
                 name, ev = events[0]
                 boss, hp = ev["boss"], ev["boss_hp"]
             else:
-                boss, hp = WEEKLY_BOSS["name"], WEEKLY_BOSS["hp"]
+                # Weekly boss rotates (ISO week % weekly bosses);
+                # WEEKLY_BOSSES[0] is the original Demon King.
+                _wb = logic.weekly_boss_for_date()
+                boss, hp = _wb["name"], _wb["hp"]
             conn.execute(
                 "INSERT INTO raids (boss, hp, max_hp, created_at) VALUES (?, ?, ?, ?)",
                 (boss, hp, hp, int(time.time())))

@@ -29,7 +29,7 @@ import info_db
 import logic
 from data import (AREAS, BLACKMARKET_POOL, CLASSES, EVENTS, EVOLUTIONS,
                   GACHA_POOL, ITEMS, MONSTERS, PETS, PET_ADOPT_COST,
-                  RECIPES, SHOP_STOCK, WEEKLY_BOSS)
+                  RECIPES, SHOP_STOCK, WEEKLY_BOSS, WEEKLY_BOSSES)
 from .common import (COLOR_BATTLE, COLOR_CORE, COLOR_ECONOMY, COLOR_EXTRA,
                      COLOR_PET, COLOR_PREMIUM, COLOR_SOCIAL, bar_line,
                      emb, err_embed, get_conn)
@@ -92,8 +92,9 @@ def trim(text, limit=4000):
 def all_bosses():
     """Internal boss keys: seasonal event bosses + the weekly boss."""
     bosses = [ev["boss"] for ev in EVENTS.values()]
-    if WEEKLY_BOSS["name"] not in bosses:
-        bosses.append(WEEKLY_BOSS["name"])
+    for wb in WEEKLY_BOSSES:
+        if wb["name"] not in bosses:
+            bosses.append(wb["name"])
     return bosses
 
 
@@ -104,6 +105,13 @@ def boss_source(name):
             return ev["boss_hp"], (
                 f"Event boss — appears in /raid during "
                 f"{disp.event_name(ev_name)}.")
+    for wb in WEEKLY_BOSSES:
+        if name == wb["name"]:
+            return wb["hp"], (
+                "Weekly raid boss — appears in /raid when no seasonal "
+                "event is active. It rotates weekly with "
+                + ", ".join(disp.monster(w["name"]) for w in WEEKLY_BOSSES)
+                + ".")
     if name == WEEKLY_BOSS["name"]:
         return WEEKLY_BOSS["hp"], (
             "Weekly raid boss — appears in /raid when no seasonal "
@@ -327,8 +335,9 @@ class Info(commands.Cog):
         if up_lines:
             desc += "\n\n**Upcoming:**\n" + "\n".join(up_lines)
         desc += (f"\n\nWhen no event is active, the weekly raid boss is "
-                 f"**{disp.monster(WEEKLY_BOSS['name'])}** "
-                 f"({WEEKLY_BOSS['hp']} HP).")
+                 f"**{disp.monster(logic.weekly_boss_for_date()['name'])}** "
+                 f"({logic.weekly_boss_for_date()['hp']} HP) — this week's "
+                 f"rotating weekly boss (Demon King, Void King, Snow Queen).")
         await interaction.response.send_message(embed=emb(
             "📅 Seasonal Events", desc, color=COLOR_PREMIUM))
 
@@ -341,7 +350,7 @@ class Info(commands.Cog):
                 for m in info["monsters"]:
                     mon = MONSTERS[m]
                     lines.append(
-                        f"• **{disp.monster(m)}** — ❤️ {mon['hp']} "
+                        f"• **{disp.monster(m)}** — {mon.get('tier', 'Common')} Tier • ❤️ {mon['hp']} "
                         f"⚔️ {mon['atk']} 🛡️ {mon['def']} • "
                         f"{mon['exp']} EXP")
                 sections.append(
@@ -366,6 +375,7 @@ class Info(commands.Cog):
             mon = MONSTERS[key]
             areas = monster_areas(key)
             desc = (
+                f"Tier: **{mon.get('tier', 'Common')}**\n"
                 f"❤️ HP: **{mon['hp']}** • ⚔️ ATK: **{mon['atk']}** • "
                 f"🛡️ DEF: **{mon['def']}**\n"
                 f"⭐ EXP: **{mon['exp']}** • 💰 Gold: "
@@ -392,7 +402,7 @@ class Info(commands.Cog):
                 mons = ", ".join(disp.monster(m)
                                  for m in info["monsters"])
                 sections.append(
-                    f"**{disp.area(area)}** (Lv {info['min_level']}+) — "
+                    f"**{disp.area(area)}** (Lv {info['min_level']}+, {info.get('tier', 'Common')} Tier) — "
                     f"{len(info['monsters'])} monsters: {mons}")
             desc = ("\n\n".join(sections)
                     + "\n\nSee details with /info topic:Areas "
@@ -416,7 +426,7 @@ class Info(commands.Cog):
                 f"• **{disp.monster(m)}** — ❤️ {mon['hp']} "
                 f"⚔️ {mon['atk']} 🛡️ {mon['def']} • {mon['exp']} EXP • "
                 f"💰 {mon['gold'][0]}–{mon['gold'][1]} gold")
-        desc = (f"Minimum level: **{info['min_level']}**\n\n"
+        desc = (f"Minimum level: **{info['min_level']}** • Tier: **{info.get('tier', 'Common')}**\n\n"
                 + "\n".join(lines))
         await interaction.response.send_message(embed=emb(
             f"🗺️ {disp.area(key)}", desc, color=COLOR_CORE))

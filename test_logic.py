@@ -304,6 +304,14 @@ def main():
     check("resolve nama Indonesia 'telur naga' tetap",
           disp.resolve_item("telur naga") == "telur naga")
 
+    # Expansion checks (defined below main; called here so the suite covers them).
+    try:
+        test_expansion_counts_and_tiers()
+        test_expansion_tier_helpers_and_rotation()
+        check("expansion counts, tiers, rotation, register stories", True)
+    except AssertionError as exc:
+        check(f"expansion checks ({exc})", False)
+
     conn.close()
     os.unlink(tmp.name)
     print()
@@ -314,5 +322,37 @@ def main():
     return 0
 
 
+# ---- expansion checks (appended) ----
+def test_expansion_counts_and_tiers():
+    import data
+    assert len(data.CLASSES) == 10 and len(data.EVOLUTIONS) == 20
+    assert len(data.AREAS) == 11 and len(data.MONSTERS) == 33
+    assert len(data.ITEMS) == 82 and len(data.QUESTS) == 19
+    assert len(data.PETS) == 10 and len(data.JOBS) == 6 and len(data.RECIPES) == 12
+    assert len(data.WEEKLY_BOSSES) == 3 and len(data.EVENTS) == 5
+    assert len(data.STORY) == 8 and len(data.DUNGEON_PUZZLES) == 10
+    assert all("tier" in q for q in data.QUESTS.values())
+    assert all("tier" in a for a in data.AREAS.values())
+    assert all("tier" in m for m in data.MONSTERS.values())
+    assert all(m in data.MONSTERS for a in data.AREAS.values() for m in a["monsters"])
+    assert all(l in data.ITEMS for v in data.MONSTERS.values() for l in v["loot"])
+    assert all(n in data.ITEMS for v in data.RECIPES.values() for n in v["needs"])
+    assert data.ITEMS["telur naga"]["type"] == "rare"  # Dragon Egg unchanged
+
+
+def test_expansion_tier_helpers_and_rotation():
+    import data, logic
+    from datetime import date
+    assert logic.content_tier_for_level(1) == "Common"
+    assert logic.content_tier_for_level(10) == "Rare"
+    assert logic.content_tier_for_level(20) == "Epic"
+    assert logic.content_tier_for_level(30) == "Legendary"
+    assert logic.monster_tier("Naga Void") == "Legendary"
+    assert logic.quest_tier("mq6") == "Legendary"
+    names = {logic.weekly_boss_for_date(date(2026, 1, 5 + 7 * w))["name"] for w in range(3)}
+    assert names == {wb["name"] for wb in data.WEEKLY_BOSSES}
+    assert data.REGISTER_PROLOGUE and all(c in data.REGISTER_STORIES for c in data.CLASSES)
+
 if __name__ == "__main__":
     sys.exit(main())
+

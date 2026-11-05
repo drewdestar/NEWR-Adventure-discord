@@ -8,7 +8,8 @@ import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from data import CLASSES, EVOLUTIONS, ITEMS, MONSTERS, PETS, STARTER_TIERS
+from data import (CLASSES, CONTENT_TIERS, EVOLUTIONS, ITEMS, MONSTERS,
+                PETS, QUESTS, STARTER_TIERS, WEEKLY_BOSSES)
 
 WIB = ZoneInfo("Asia/Jakarta")
 MAX_STAMINA = 100
@@ -23,6 +24,45 @@ def now_ts():
 
 def today_wib():
     return datetime.now(WIB).strftime("%Y-%m-%d")
+
+
+def tier_index(tier):
+    """0..3 position of a content tier (unknown tiers sort as Common)."""
+    return CONTENT_TIERS.index(tier) if tier in CONTENT_TIERS else 0
+
+
+def content_tier_for_level(level):
+    """Content tier band for a player level (display/unlock band only;
+    it never changes existing stats or rewards)."""
+    if level >= 30:
+        return "Legendary"
+    if level >= 20:
+        return "Epic"
+    if level >= 10:
+        return "Rare"
+    return "Common"
+
+
+def monster_tier(name):
+    return MONSTERS[name].get("tier", "Common") if name in MONSTERS else "Common"
+
+
+def area_tier(name):
+    from data import AREAS
+    return AREAS[name].get("tier", "Common") if name in AREAS else "Common"
+
+
+def quest_tier(qid):
+    return QUESTS[qid].get("tier", "Common") if qid in QUESTS else "Common"
+
+
+def weekly_boss_for_date(on_date=None):
+    """Weekly raid boss rotation (ISO week % number of weekly bosses).
+
+    WEEKLY_BOSSES[0] is the original Demon King, so week 0 of the
+    rotation still starts with the boss players already know."""
+    d = on_date or datetime.now(WIB).date()
+    return WEEKLY_BOSSES[d.isocalendar()[1] % len(WEEKLY_BOSSES)]
 
 
 def exp_needed(level):
@@ -200,6 +240,7 @@ def scale_monster(name, player_level):
     bonus = max(0, player_level - 1)
     return {
         "name": name,
+        "tier": base.get("tier", "Common"),
         "hp": base["hp"] + bonus * 8,
         "atk": base["atk"] + bonus,
         "def": base["def"] + bonus // 2,
