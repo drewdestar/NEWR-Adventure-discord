@@ -89,6 +89,53 @@ class LinkCode(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # Instant code delivery (2026-11-05, user: "satset, kirim langsung"):
+    # global slash commands can take up to ~1 hour to appear in DMs, and
+    # that wait is unacceptable for something that works like an auth
+    # code. So a DM text trigger bypasses sync entirely: DM content is
+    # a Discord exception and reaches the bot even without the
+    # privileged message-content intent (dm_messages is on by default).
+    # DM the bot "link" (or "code"/"linkcode") and it replies instantly
+    # with the same code + deep link as /linkcode. Server messages are
+    # still ignored: the bot stays slash-only in servers, and the code
+    # itself is only ever sent in a private DM.
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot or message.guild is not None:
+            return
+        if message.content.strip().lower() not in (
+                "link", "code", "linkcode", "/linkcode", "kode"):
+            return
+        conn = get_conn()
+        i18n.set_ctx_for_user(message.author.id, conn)
+        player = db.get_player(conn, message.author.id)
+        if player is None:
+            await message.channel.send(
+                "You don't have a character yet! "
+                "Register first with `/register` in NEWR LABS.")
+            return
+        result = issue_link_code(conn, message.author.id)
+        if result is None:
+            await message.channel.send(
+                "Your Discord character is already linked to Telegram. "
+                "If you want to link a different Telegram account, "
+                "send /unlink to @NEWRAdventureBot first, then DM me "
+                "\"link\" again.")
+            return
+        code, reused = result
+        head = ("You already have a link code that is still valid."
+                if reused else "Your Telegram link code is:")
+        await message.channel.send(
+            f"{head}\n"
+            f"Tap this link to link automatically:\n"
+            f"https://t.me/NEWRAdventureBot?start={code}\n"
+            f"Or copy the code below (tap the copy icon on the code "
+            f"block) and send it to @NEWRAdventureBot on Telegram:\n"
+            f"```\n{code}\n```\n"
+            f"Or send `/link {code}` in Telegram.\n"
+            f"It is single-use and expires in 24 hours. "
+            f"Do not share it with anyone else.")
+
     @app_commands.command(
         name="linkcode",
         description="Get a code to link your Discord character to Telegram")
